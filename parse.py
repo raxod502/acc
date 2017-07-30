@@ -1,3 +1,7 @@
+import decimal
+
+from decimal import Decimal
+
 import util
 
 # Note: it is assumed that nothing in DELIMITER_CHARS or ESCAPE_CHARS
@@ -116,10 +120,26 @@ class Clause:
     def __repr__(self):
         return util.make_repr(self, ["name", "argument"])
 
-class GroupingError(Exception):
+class InterpretationError(Exception):
     def __init__(self, message, *args, content=None):
         super().__init__(message, *args)
         self.content = content
+
+def interpret_type_token(token):
+    for type_ in ["credit", "debit", "transfer"]:
+        if matches(token, type_):
+            return type_
+    raise InterpretationError("Malformed transaction type",
+                              content=token)
+
+def interpret_amount_token(token):
+    trimmed_token = token[1:] if token.startswith("$") else token
+    try:
+        amount = Decimal(trimmed_token)
+    except decimal.InvalidOperation:
+        raise InterpretationError("Malformed transaction amount",
+                                  context=token)
+    return amount
 
 def interpret_argument(argument, clause_name, config):
     interpretations = []
@@ -169,3 +189,15 @@ def interpret_token_groups(tokens, config):
                 for tail in tail_interpretations:
                     interpretations.append([head] + tail)
     return interpretations
+
+def interpret_tokens(tokens, config):
+    if len(tokens) < 2:
+        raise InterpretationError("Transaction must provide type and amount")
+    type_token, amount_token, *token_groups = tokens
+    type_ = interpret_type_token(type_token)
+    amount = interpret_amount_token(amount_token)
+    group_interpretations = interpret_token_groups(token_groups, config)
+    if not group_interpretations:
+        raise InterpretationError("No valid interpretations")
+    return [(type_, amount, interpretation)
+            for interpretation in group_interpretations]
