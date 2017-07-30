@@ -8,7 +8,7 @@ class Transaction:
         self.category = category
 
     def __repr__(self):
-        return util.make_repr(self, ['id_', 'date', 'description', 'category'])
+        return util.make_repr(self, ["id_", "date", "description", "category"])
 
 class CreditOrDebit(Transaction):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -19,8 +19,8 @@ class CreditOrDebit(Transaction):
         self.value = value
 
     def __repr__(self):
-        return util.make_repr(self, ['id_', 'account', 'value', 'date',
-                                     'description', 'category'])
+        return util.make_repr(self, ["id_", "account", "value", "date",
+                                     "description", "category"])
 
 class Credit(CreditOrDebit):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -44,9 +44,9 @@ class Transfer(Transaction):
         self.value = value
 
     def __repr__(self):
-        return util.make_repr(self, ['id_', 'source_account', 'target_account',
-                                     'value', 'date', 'description',
-                                     'category'])
+        return util.make_repr(self, ["id_", "source_account", "target_account",
+                                     "value", "date", "description",
+                                     "category"])
 
 class Account:
     def __init__(self, name):
