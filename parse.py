@@ -102,15 +102,11 @@ CLAUSE_SUFFIXES = {
     "to": ["account"],
 }
 
-def clause_arguments(clause_name, config):
-    # FIXME
-    return ["foo", "bar", "baz", "quux"]
+def matches(candidate, pattern):
+    return pattern.casefold().startswith(candidate.casefold())
 
-def matches(x, y):
-    return y.casefold().startswith(x.casefold())
-
-def matches_exactly(x, y):
-    return y.casefold() == x.casefold()
+def matches_exactly(candidate, pattern):
+    return pattern.casefold() == candidate.casefold()
 
 class Clause:
     def __init__(self, name, argument):
@@ -124,6 +120,14 @@ class GroupingError(Exception):
     def __init__(self, message, *args, content=None):
         super().__init__(message, *args)
         self.content = content
+
+def interpret_argument(argument, clause_name, config):
+    interpretations = []
+    for clause_argument in ["foo", "bar", "baz", "quux"]:
+        if matches(argument, clause_argument):
+            interpretation = Clause(clause_name, clause_argument)
+            interpretations.append(interpretation)
+    return interpretations
 
 def interpret_token_group(tokens, config):
     interpretations = []
@@ -148,10 +152,8 @@ def interpret_token_group(tokens, config):
                 if not valid:
                     break
                 argument = tokens[-1]
-                for clause_argument in clause_arguments(clause_name, config):
-                    if matches(argument, clause_argument):
-                        interpretation = Clause(clause_name, clause_argument)
-                        interpretations.append(interpretation)
+                interpretations.extend(interpret_argument(
+                    argument, clause_name, config))
     return interpretations
 
 def interpret_token_groups(tokens, config):
