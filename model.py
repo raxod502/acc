@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-
-def make_repr(self, keys):
-    classname = self.__class__.__name__
-    keyvals = []
-    for key in keys:
-        keyvals.append(f"{key}={repr(getattr(self, key))}")
-    body = ", ".join(keyvals)
-    return f"{classname}({body})"
+import util
 
 class Transaction:
     def __init__(self, id_, date=None, description=None, category=None):
@@ -16,7 +8,7 @@ class Transaction:
         self.category = category
 
     def __repr__(self):
-        return make_repr(self, ['id_', 'date', 'description', 'category'])
+        return util.make_repr(self, ['id_', 'date', 'description', 'category'])
 
 class CreditOrDebit(Transaction):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -27,8 +19,8 @@ class CreditOrDebit(Transaction):
         self.value = value
 
     def __repr__(self):
-        return make_repr(self, ['id_', 'account', 'value', 'date',
-                                'description', 'category'])
+        return util.make_repr(self, ['id_', 'account', 'value', 'date',
+                                     'description', 'category'])
 
 class Credit(CreditOrDebit):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -52,8 +44,9 @@ class Transfer(Transaction):
         self.value = value
 
     def __repr__(self):
-        return make_repr(self, ['id_', 'source_account', 'target_account',
-                                'value', 'date', 'description', 'category'])
+        return util.make_repr(self, ['id_', 'source_account', 'target_account',
+                                     'value', 'date', 'description',
+                                     'category'])
 
 class Account:
     def __init__(self, name):
