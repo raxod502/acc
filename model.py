@@ -1,14 +1,12 @@
 import util
 
-class Transaction:
+class Transaction(util.Attributes):
     def __init__(self, id_, date=None, description=None, category=None):
         self.id_ = id_
         self.date = date
         self.description = description
         self.category = category
-
-    def __repr__(self):
-        return util.make_repr(self, ["id_", "date", "description", "category"])
+        self._keys = ["id_", "date", "description", "category"]
 
 class CreditOrDebit(Transaction):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -17,10 +15,8 @@ class CreditOrDebit(Transaction):
                          category=category)
         self.account = account
         self.value = value
-
-    def __repr__(self):
-        return util.make_repr(self, ["id_", "account", "value", "date",
-                                     "description", "category"])
+        self._keys = ["id_", "account", "value", "date", "description",
+                      "category"]
 
 class Credit(CreditOrDebit):
     def __init__(self, id_, account, value, date=None, description=None,
@@ -42,12 +38,10 @@ class Transfer(Transaction):
         self.source_account = source_account
         self.target_account = target_account
         self.value = value
+        self._keys = ["id_", "source_account", "target_account", "value",
+                      "date", "description", "category"]
 
-    def __repr__(self):
-        return util.make_repr(self, ["id_", "source_account", "target_account",
-                                     "value", "date", "description",
-                                     "category"])
-
-class Account:
+class Account(util.Attributes):
     def __init__(self, name):
         self.name = name
+        self._keys = ["name"]
