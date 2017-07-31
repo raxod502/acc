@@ -1,14 +1,24 @@
 **acc**: lightweight, version-controlled, human-readable financial
 records on the command line.
 
-## Caveat
+    $ xcode-select --install
+    $ /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+    $ brew install python3
+    $ git clone git@github.com:raxod502/acc.git
+    $ cd acc
+    $ python3 -m venv venv
+    $ source venv/bin/activate
+    $ pip install -r requirements.txt
+    $ <hack>
+
+## README-driven development
 
 This software does not exist yet! I am practicing "README-driven
 development". This text is a preliminary sketch of the functionality I
 want to eventually create, and should not be considered a real
 specification.
 
-## Preview
+### Preview
 
 `acc` manages an *accounts repository*. This consists of a primary
 *transactions file*, a *configuration file*, as well as *import files*
@@ -43,7 +53,7 @@ to make things prettier and less ambiguous, however. These
 reformatting operations are of course quite safe since `acc` makes a
 commit before and after each operation, by default.
 
-## Components
+### Components
 
 The implementation of `acc` consists of many distinct, largely
 independent components:
