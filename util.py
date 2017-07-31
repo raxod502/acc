@@ -22,3 +22,17 @@ class Attributes:
 
 class InternalError(Exception):
     pass
+
+# Note: it is assumed that nothing in DELIMITER_CHARS or ESCAPE_CHARS
+# is whitespace.
+
+DELIMITER_CHARS = {
+    "|": "|",
+    "<": ">",
+    '"': '"',
+    "'": "'",
+}
+
+DELIMITER_PREFERENCE = ["|", "/", "<", '"', "'"]
+
+ESCAPE_CHARS = ["\\"]

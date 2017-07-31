@@ -1,21 +1,9 @@
 import decimal
 
-from decimal import Decimal
-
 import model
 import util
 
-# Note: it is assumed that nothing in DELIMITER_CHARS or ESCAPE_CHARS
-# is whitespace.
-
-DELIMITER_CHARS = {
-    '"': '"',
-    "'": "'",
-    "|": "|",
-    "<": ">",
-}
-
-ESCAPE_CHARS = ["\\"]
+from util import DELIMITER_CHARS, ESCAPE_CHARS
 
 class ParseError(Exception):
     def __init__(self, message, *args, content=None, row=None, column=None):
@@ -31,6 +19,7 @@ class TokenizationError(ParseError):
 def read_token(string, parsing_start_index):
     found_token = False
     token_chars = []
+    delimiter = None
     end_delimiter = None
     escape_next_char = False
     token_start_index = None
@@ -42,14 +31,15 @@ def read_token(string, parsing_start_index):
                 found_token = True
                 token_start_index = index
                 if char in DELIMITER_CHARS:
-                    end_delimiter = DELIMITER_CHARS[char]
+                    delimiter = char
+                    end_delimiter = DELIMITER_CHARS[delimiter]
                 elif char in ESCAPE_CHARS:
                     escape_next_char = True
                 else:
                     token_chars.append(char)
         elif escape_next_char:
             if (char not in ESCAPE_CHARS and char != end_delimiter and not
-                (not end_delimiter and
+                (not delimiter and
                  (char.isspace() or char in DELIMITER_CHARS))):
                 last_char = string[index - 1]
                 escape_sequence = f"{last_char}{char}"
@@ -60,10 +50,14 @@ def read_token(string, parsing_start_index):
             token_chars.append(char)
             escape_next_char = False
         elif char == end_delimiter:
-            end_delimiter = None
+            delimiter = None
             token_end_index = index + 1
             break
-        elif not end_delimiter and (char.isspace() or char in DELIMITER_CHARS):
+        elif char == delimiter:
+            raise TokenizationError("Unescaped start delimiter",
+                                    index=index,
+                                    content=delimiter)
+        elif not delimiter and (char.isspace() or char in DELIMITER_CHARS):
             token_end_index = index
             break
         elif char in ESCAPE_CHARS:
@@ -76,7 +70,7 @@ def read_token(string, parsing_start_index):
         raise TokenizationError("Unfinished escape sequence",
                                 index=escape_sequence_index,
                                 content=unfinished_escape_sequence)
-    if end_delimiter:
+    if delimiter:
         unfinished_token = string[token_start_index:]
         raise TokenizationError("Unfinished quoted token",
                                 index=token_start_index,
@@ -93,7 +87,7 @@ def read_tokens(string):
     return tokens
 
 CLAUSE_NAMES = [
-    "account", "category", "date", "description", "from", "id", "time", "to"
+    "account", "category", "date", "description", "from", "id", "to"
 ]
 
 CLAUSE_PREFIXES = {
@@ -103,7 +97,6 @@ CLAUSE_PREFIXES = {
     "description": ["and", "using", "with"],
     "from": ["and"],
     "id": ["and", "using", "with"],
-    "time": ["and", "at", "using", "with"],
     "to": ["and"],
 }
 
@@ -113,7 +106,6 @@ CLAUSE_SUFFIXES = {
     "date": ["of"],
     "description": ["of"],
     "from": ["account"],
-    "time": ["of"],
     "to": ["account"],
 }
 
@@ -143,7 +135,7 @@ def interpret_type_token(token):
 def interpret_value_token(token):
     trimmed_token = token[1:] if token.startswith("$") else token
     try:
-        value = Decimal(trimmed_token)
+        value = decimal.Decimal(trimmed_token)
     except decimal.InvalidOperation:
         raise InterpretationError("Malformed transaction value",
                                   context=token)
@@ -280,10 +272,10 @@ def normalize_interpretation(type_, value, clauses, config):
         options["target_account"] = model.Account(to)
         class_ = model.Transfer
     else:
-        raise util.InternalError("Unexpected transaction type")
+        raise util.InternalError(f"Unexpected transaction type: {type_}")
     options["value"] = value
-    options["date"] = config.make_date(clause_map.get("date"),
-                                       clause_map.get("time"))
+    options["date"], options["with_time"] = (
+        config.make_date(clause_map.get("date")))
     options["id_"] = clause_map.get("id") or config.make_id()
     return class_(**options)
 

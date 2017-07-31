@@ -25,13 +25,14 @@ class Config:
         # FIXME
         return "saving"
 
-    def make_date(self, date, time):
+    def make_date(self, date):
         # FIXME
+        if not date:
+            return None, False
         try:
-            return dateutil.parser.parse(
-                (date or "") + " " + (time or ""))
+            return dateutil.parser.parse(date), False
         except ValueError:
-            return None
+            return None, False
 
     def make_id(self):
         # FIXME
