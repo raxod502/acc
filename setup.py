@@ -7,9 +7,7 @@ setup(
     description="Command-line accounting tool.",
     license="MIT",
     install_requires=[
-        "certifi",
         "python-dateutil",
-        "urllib3",
     ],
     name="acc",
     # scripts=["acc"],
