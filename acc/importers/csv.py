@@ -15,6 +15,9 @@ ACCOUNTS = (
     "us-treasury-bonds",
 )
 
+HEADER_ROWS = 3
+FOOTER_ROWS = 1
+
 class InvalidInputError(Exception):
     pass
 
@@ -22,11 +25,21 @@ def random_id():
     return str(uuid.uuid4())
 
 def parse_money(money):
-    if not money.startswith("$"):
-        raise InvalidInputError
-    return float(money[1:])
+    err = InvalidInputError("Couldn't parse monetary value: " + repr(money))
+    if not money:
+        return 0.0
+    if money.startswith("$"):
+        money = money[1:]
+    elif money.startswith("-$"):
+        money = "-" + money[2:]
+    else:
+        raise err
+    try:
+        return float(money.replace(",", ""))
+    except ValueError:
+        raise err
 
-def csv_row_to_transaction(row):
+def csv_row_to_transaction(row, row_num):
     date = row[0]
     description = row[2]
     transaction_id = row[3]
@@ -37,7 +50,7 @@ def csv_row_to_transaction(row):
     try:
         date = dateutil.parser.parse(date)
     except ValueError as e:
-        raise InvalidInputError("Couldn't parse date: " + date)
+        raise InvalidInputError("Couldn't parse date: " + repr(date))
     if not description:
         raise InvalidInputError
     if not transaction_id:
@@ -51,9 +64,12 @@ def csv_row_to_transaction(row):
     deltas = list(map(parse_money, deltas))
     nonzero_indices = []
     for idx, delta in enumerate(deltas):
-        nonzero_indices.append(idx)
+        if delta != 0.0:
+            nonzero_indices.append(idx)
     if len(nonzero_indices) not in (1, 2):
-        raise InvalidInputError
+        raise InvalidInputError(
+            "Need exactly one or two deltas in row {}, got: {}"
+            .format(row_num, repr([deltas[idx] for idx in nonzero_indices])))
     if len(nonzero_indices) == 2:
         transaction_type = "transfer"
         delta1 = deltas[nonzero_indices[0]]
@@ -74,7 +90,7 @@ def csv_row_to_transaction(row):
         else:
             transaction_type = "debit"
             amount = -amount
-        account = nonzero_indices[0]
+        account = ACCOUNTS[nonzero_indices[0]]
 
     trans = {
         "id": random_id(),
@@ -96,9 +112,8 @@ def csv_row_to_transaction(row):
 def csv_file_to_transactions(filename):
     transactions = []
     with open(filename, newline="") as f:
-        reader = csv.reader(f)
-        # Skip the header.
-        next(reader)
-        for row in reader:
-            transactions.append(csv_row_to_transaction(row))
+        lines = list(csv.reader(f))
+        lines = lines[HEADER_ROWS:-FOOTER_ROWS]
+        for idx, row in enumerate(lines, HEADER_ROWS):
+            transactions.append(csv_row_to_transaction(row, idx))
     return transactions
