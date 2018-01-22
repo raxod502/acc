@@ -92,6 +92,7 @@ def csv_row_to_transaction(row, row_num):
 
     trans = {
         "id": random_id(),
+        "description": description,
         "amount": amount,
         "type": transaction_type,
         "date": date,
