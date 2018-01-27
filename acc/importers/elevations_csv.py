@@ -2,11 +2,13 @@ import csv
 import dateutil.parser
 import uuid
 
+HEADER_ROWS = 4
+
 class InvalidInputError(Exception):
     pass
 
 def random_id():
-    return uuid.uuid4()
+    return str(uuid.uuid4())
 
 def parse_row(row, row_id):
     elevations_id = row[0]
@@ -32,7 +34,7 @@ def parse_row(row, row_id):
         raise InvalidInputError("No description for row {}".format(row_id))
 
     if not elevations_memo:
-        raise InvalidInputError("No memo for row {}".format(row_id))
+        elevations_memo = None
 
     if debit_delta:
         try:
@@ -61,7 +63,9 @@ def parse_row(row, row_id):
     if not elevations_check_number:
         elevations_check_number = None
 
-    description = elevations_description + ": " + elevations_memo
+    description = elevations_description
+    if elevations_memo:
+        description += ": " + elevations_memo
 
     if debit_delta and credit_delta:
         raise InvalidInputError("Both credit and debit for row {}"
@@ -90,3 +94,13 @@ def parse_row(row, row_id):
         "elevations_balance": elevations_balance,
         "elevations_check_number": elevations_check_number,
     }
+
+def parse_csv(csv_file):
+    transactions = []
+    with open(csv_file) as f:
+        reader = csv.reader(f)
+        for i in range(HEADER_ROWS):
+            next(reader)
+        for idx, row in enumerate(reader, HEADER_ROWS + 1):
+            transactions.append(parse_row(row, idx))
+    return transactions
