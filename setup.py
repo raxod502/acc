@@ -10,7 +10,7 @@ setup(
         "python-dateutil",
     ],
     name="acc",
-    # scripts=["acc"],
+    scripts=["scripts/acc"],
     url="https://github.com/raxod502/acc",
     version="1.0",
     zip_safe=True,

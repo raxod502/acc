@@ -1,23 +1,32 @@
 import datetime
 
-USAGE_FORMAT = """usage: {} [-C <dir>] <subcommand> [<arg>...]
+USAGE = """[-C <dir>] <subcommand> [<arg>...]
 
 Available subcommands:
-    init [<dir>] [--git | --no-git]
+    init [--git | --no-git] [--] <dir>
     config <key> [<val>]
     import <importer> [--to <account>] [--] [<arg>...]
     merge <account> [--to <account>]
     help"""
+
+SUBCOMMAND_USAGE = {
+    "init": "[--git | --no-git] [--] <dir>",
+}
 
 class IOWrapper:
     def __init__(self, io, program_name):
         self.io = io
         self.program_name = program_name
 
-    def print_usage(self, stream=None):
+    def print_usage(self, message=None, command=None, stream=None):
+        if message is None:
+            if command is None:
+                message = USAGE
+            else:
+                message = command + " " + SUBCOMMAND_USAGE[command]
         if stream is None:
             stream = self.io.stderr
-        usage = USAGE_FORMAT.format(self.program_name)
+        usage = "usage: {} {}".format(self.program_name, message)
         print(usage, file=stream)
 
     def print_error(self, text):
@@ -32,19 +41,61 @@ def json_serializer(obj):
         return obj.strftime("%Y-%m-%d")
     if isinstance(obj, datetime.datetime):
         return obj.strftime("%Y-%m-%d %H:%M:%S%z")
-    raise TypeError("Object of type '{}' is not JSON serializable".format(type(obj)))
+    raise TypeError(
+        "Object of type '{}' is not JSON serializable".format(type(obj)))
 
 def subcommand_init(args, io):
-    pass
+    args_done = False
+    using_git = True
+    path = None
+    for arg in args:
+        if not args_done:
+            if arg == "--git":
+                using_git = True
+                continue
+            if arg == "--no-git":
+                using_git = False
+                continue
+            if arg == "--":
+                args_done = True
+                continue
+        if path is None:
+            path = arg
+            continue
+        io.print_usage(command="init")
+        return 1
+    if path is None:
+        io.print_usage(command="init")
+        return 1
+    if using_git and not io.which("git"):
+        io.print_error("command not found: git")
+        return 1
+    parent = io.dirname(io.abspath(path))
+    if not io.isdir(parent):
+        io.print_error("no such directory: {}".format(parent))
+    if io.exists(path) or io.islink(path):
+        io.print_error("path already exists: {}".format(path))
+    try:
+        io.mkdir(path)
+    except Exception as e:
+        io.print_error(
+            "could not create directory {}: {}".format(repr(path), str(e)))
+        return 1
+    result = io.run(["git", "init"], cwd=path)
+    if result.returncode != 0:
+        io.print_error("command failed: git init")
+        return 1
+    config_file = io.join(path, "config.json")
+    gitignore = io.join(path, ".gitignore")
 
 def subcommand_config(args, io):
-    pass
+    raise NotImplementedError
 
 def subcommand_import(args, io):
-    pass
+    raise NotImplementedError
 
 def subcommand_merge(args, io):
-    pass
+    raise NotImplementedError
 
 def command_line(program_name, args, io):
     io = IOWrapper(io, program_name)
@@ -71,6 +122,6 @@ def command_line(program_name, args, io):
     if subcommand == "merge":
         return subcommand_merge(args, io)
     if subcommand in ("help", "-h", "-help", "--help", "-?"):
-        io.print_usage(io.stdout)
+        io.print_usage(stream=io.stdout)
         return 0
     io.print_usage()
