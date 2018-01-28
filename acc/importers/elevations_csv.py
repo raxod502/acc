@@ -1,6 +1,11 @@
+import acc
+
 import csv
 import dateutil.parser
+import json
 import uuid
+
+## Parsing
 
 HEADER_ROWS = 4
 
@@ -104,3 +109,33 @@ def parse_csv(csv_file):
         for idx, row in enumerate(reader, HEADER_ROWS + 1):
             transactions.append(parse_row(row, idx))
     return transactions
+
+## Command line
+
+USAGE = "--from <csv-file> --to <json-file>"
+
+def usage():
+    return acc.UsageError(USAGE)
+
+def run(args, io):
+    csv_path = None
+    json_path = None
+    while args:
+        if args[0] == "--from":
+            if len(args) == 1:
+                raise usage()
+            csv_path = args[1]
+            args = args[2:]
+        elif args[0] == "--to":
+            if len(args) == 1:
+                raise usage()
+            json_path = args[1]
+            args = args[2:]
+        else:
+            raise usage()
+    try:
+        transactions = parse_csv(csv_path)
+    except IOError as e:
+        raise acc.FilesystemError(
+            "could not open file {}: {}".format(repr(csv_path), str(e)))
+    # FIXME: write json file
