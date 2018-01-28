@@ -29,6 +29,9 @@ class IOWrapper:
         usage = "usage: {} {}".format(self.program_name, message)
         print(usage, file=stream)
 
+    def print(self, text):
+        print(text, file=self.io.stdout)
+
     def print_error(self, text):
         message = "{}: {}".format(self.program_name, text)
         print(message, file=self.io.stderr)
@@ -73,8 +76,10 @@ def subcommand_init(args, io):
     parent = io.dirname(io.abspath(path))
     if not io.isdir(parent):
         io.print_error("no such directory: {}".format(parent))
+        return 1
     if io.exists(path) or io.islink(path):
         io.print_error("path already exists: {}".format(path))
+        return 1
     try:
         io.mkdir(path)
     except Exception as e:
@@ -85,8 +90,8 @@ def subcommand_init(args, io):
     if result.returncode != 0:
         io.print_error("command failed: git init")
         return 1
-    config_file = io.join(path, "config.json")
-    gitignore = io.join(path, ".gitignore")
+    io.print("Set up acc in {}".format(io.join(io.abspath(path), "")))
+    return 0
 
 def subcommand_config(args, io):
     raise NotImplementedError
