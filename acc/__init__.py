@@ -42,9 +42,7 @@ USAGE = """[-C <dir>] <subcommand> [<arg>...]
 
 Available subcommands:
     init [--git | --no-git] [--] <dir>
-    config <key> [<val>]
     import <importer> [<arg>...]
-    merge <account> [--to <account>]
     help"""
 
 SUBCOMMAND_USAGE = {
@@ -189,11 +187,6 @@ def subcommand_init(args, io):
             "could not write file {}: {}".format(repr(config_file), str(e)))
     io.print("Set up acc in {}".format(io.join(io.abspath(path), "")))
 
-### config
-
-def subcommand_config(args, io):
-    raise NotImplementedError
-
 ### import
 
 def format_importer_list():
@@ -216,11 +209,6 @@ def subcommand_import(args, io):
         importer.run(args, io)
     except UsageError as e:
         raise UsageError(importer_name + " " + str(e))
-
-### merge
-
-def subcommand_merge(args, io):
-    raise NotImplementedError
 
 ## Configuration
 
@@ -270,9 +258,7 @@ def load_config_file(filename, io):
 
 SUBCOMMANDS = {
     "init": subcommand_init,
-    "config": subcommand_config,
     "import": subcommand_import,
-    "merge": subcommand_merge,
 }
 
 def command_line(program_name, args, io):
