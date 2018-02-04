@@ -4,6 +4,7 @@ import datetime
 import importlib
 import json
 import pkgutil
+import shlex
 import uuid
 
 ## Exceptions
@@ -15,6 +16,9 @@ class Success(Exit):
     pass
 
 class Failure(Exit):
+    pass
+
+class RawUsageError(Failure):
     pass
 
 class UsageError(Failure):
@@ -61,10 +65,10 @@ class IOWrapper:
         self.io = io
         self.program_name = program_name
 
-    def print(self, text, stream=None):
+    def print(self, *args, stream=None, **kwargs):
         if stream is None:
             stream = self.io.stdout
-        print(text, file=self.io.stdout)
+        print(*args, file=self.io.stdout, **kwargs)
 
     def print_error(self, text):
         message = "{}: {}".format(self.program_name, text)
@@ -80,6 +84,9 @@ class IOWrapper:
         return getattr(self.io, name)
 
 ## Miscellaneous
+
+def quote_command(args):
+    return " ".join(shlex.quote(arg) for arg in args)
 
 def random_transaction_id():
     return str(uuid.uuid4())
@@ -271,20 +278,44 @@ def command_line(program_name, args, io):
             args = args[2:]
         if not args:
             raise usage()
+        commands = [args]
         subcommand, *args = args
         if subcommand in ("help", "-h", "-help", "--help", "-?"):
             io.print_usage(stream=io.stdout)
         else:
             config = get_config(io)
-            if subcommand in config["aliases"]:
-                # FIXME
-        if subcommand in SUBCOMMANDS:
+            seen_aliases = set()
             try:
-                SUBCOMMANDS[subcommand](args, io)
-            except UsageError as e:
-                raise UsageError(subcommand + " " + str(e))
-        else:
-            raise usage()
+                while subcommand in config["aliases"]:
+                    if subcommand in seen_aliases:
+                        if subcommand in SUBCOMMANDS:
+                            break
+                        else:
+                            raise RawUsageError(
+                                "alias {} expands to itself".format(repr(subcommand)))
+                    alias_args = shlex.split(config["aliases"][subcommand])
+                    args = alias_args + args
+                    if not args:
+                        raise RawUsageError(
+                            "usage of alias {} expands to empty command"
+                            .format(repr(subcommand)))
+                    seen_aliases.add(subcommand)
+                    commands.append(args)
+                    subcommand, *args = args
+                if subcommand in SUBCOMMANDS:
+                    try:
+                        SUBCOMMANDS[subcommand](args, io)
+                    except UsageError as e:
+                        raise UsageError(subcommand + " " + str(e))
+                else:
+                    raise RawUsageError("no such command or alias: {}"
+                                        .format(subcommand))
+            except Failure as e:
+                if len(commands) > 1:
+                    for command in commands:
+                        io.print("> " + quote_command(command), stream=io.stderr)
+                    io.print(stream=io.stderr)
+                raise
     except UsageError as e:
         io.print_usage(str(e))
         return 1

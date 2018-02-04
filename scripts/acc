@@ -24,6 +24,7 @@ class IO:
         self.makedirs = os.makedirs
         self.open = open
         self.getcwd = os.getcwd
+        self.isfile = os.path.isfile
 
 if __name__ == "__main__":
     program_name = "acc"
