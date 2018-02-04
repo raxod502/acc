@@ -95,9 +95,9 @@ def parse_row(row, row_id, account):
         "elevations_check_number": elevations_check_number,
     }
 
-def read_csv(csv_file, account):
+def read_csv(csv_file, account, io):
     transactions = []
-    with open(csv_file, newline="") as f:
+    with io.open(csv_file, newline="") as f:
         reader = csv.reader(f)
         for i in range(HEADER_ROWS):
             next(reader)
@@ -142,7 +142,7 @@ def run(args, io):
     if csv_path is None or json_path is None or account is None:
         raise usage()
     try:
-        ledger = read_csv(csv_path, account)
+        ledger = read_csv(csv_path, account, io)
     except OSError as e:
         raise acc.FilesystemError(
             "could not read file {}: {}".format(repr(csv_path), str(e)))
@@ -154,7 +154,7 @@ def run(args, io):
         raise acc.FilesystemError(
             "could not create directory {}: {}".format(repr(json_dir), str(e)))
     try:
-        with open(json_path, "w") as f:
+        with io.open(json_path, "w") as f:
             f.write(ledger_str)
             f.write("\n")
     except IOError as e:

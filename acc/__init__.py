@@ -204,6 +204,51 @@ def subcommand_import(args, io):
 def subcommand_merge(args, io):
     raise NotImplementedError
 
+## Configuration
+
+def locate_dominating_file(filename, io, directory=None):
+    if directory is None:
+        directory = io.getcwd()
+    last, directory = None, io.abspath(directory)
+    while directory != last:
+        path = io.join(directory, filename)
+        if io.exists(path):
+            return path
+        last, directory = directory, io.dirname(directory)
+    return None
+
+def load_config_file(filename, io):
+    if not io.isfile(filename):
+        raise FilesystemError("not a file: {}".format(filename))
+    try:
+        with io.open(filename) as f:
+            config = json.load(f)
+    except OSError as e:
+        raise FilesystemError("could not read file {}: {}"
+                              .format(repr(filename), str(e)))
+    except json.decoder.JSONDecodeError as e:
+        raise UserDataError("malformed JSON in {}: {}"
+                            .format(repr(filename), str(e)))
+    if not isinstance(config, dict):
+        raise UserDataError("config file is not map")
+    if "aliases" in config:
+        if not isinstance(config, dict):
+            raise UserDataError("value of 'aliases' is not map")
+        for key, val in config["aliases"].items():
+            if not isinstance(key, str):
+                raise UserDataError("alias name {} is not string"
+                                    .format(key))
+            if not isinstance(val, str):
+                raise UserDataError("alias value {} is not string"
+                                    .format(val))
+    return config
+
+def get_config(io):
+    config_file = locate_dominating_file("config.json", io)
+    if config_file is None:
+        raise FilesystemError("no such file (including parent dirs): config.json")
+    return load_config_file(config_file, io)
+
 ## Command line
 
 SUBCOMMANDS = {
@@ -227,13 +272,17 @@ def command_line(program_name, args, io):
         if not args:
             raise usage()
         subcommand, *args = args
+        if subcommand in ("help", "-h", "-help", "--help", "-?"):
+            io.print_usage(stream=io.stdout)
+        else:
+            config = get_config(io)
+            if subcommand in config["aliases"]:
+                # FIXME
         if subcommand in SUBCOMMANDS:
             try:
                 SUBCOMMANDS[subcommand](args, io)
             except UsageError as e:
                 raise UsageError(subcommand + " " + str(e))
-        elif subcommand in ("help", "-h", "-help", "--help", "-?"):
-            io.print_usage(stream=io.stdout)
         else:
             raise usage()
     except UsageError as e:
