@@ -1,6 +1,9 @@
+import acc.importers
+
 import datetime
 import importlib
 import json
+import pkgutil
 import uuid
 
 ## Exceptions
@@ -175,13 +178,21 @@ def subcommand_config(args, io):
 
 ### import
 
+def format_importer_list():
+    importers = []
+    for package in pkgutil.walk_packages(path=acc.importers.__path__):
+        importers.append(package.name)
+    return ("\n\nAvailable importers (modules in 'acc.importers' namespace):\n" +
+            "\n".join("  - " + importer for importer in importers))
+
 def subcommand_import(args, io):
     if not args:
-        raise subcommand_usage("import")
+        raise UsageError(SUBCOMMAND_USAGE["import"] + format_importer_list())
     importer_name, *args = args
     module_name = "acc.importers.{}".format(importer_name)
     if not importlib.util.find_spec(module_name):
-        raise FilesystemError("no such module: {}".format(module_name))
+        raise FilesystemError("no such module: {}".format(module_name) +
+                              format_importer_list())
     importer = importlib.import_module(module_name)
     try:
         importer.run(args, io)
