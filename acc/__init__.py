@@ -87,10 +87,10 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 def is_datetime(date):
     return ":" in date
 
-def serialize_transactions(transactions):
-    converted_transactions = []
-    for transaction in transactions:
-        converted_transaction = dict(transaction)
+def serialize_ledger(ledger):
+    transactions = []
+    for transaction in ledger["transactions"]:
+        transaction = dict(transaction)
         if "date" in transaction:
             date = transaction["date"]
             if date is None:
@@ -103,13 +103,18 @@ def serialize_transactions(transactions):
                 raise InternalError(
                     "cannot serialize date of type {}: {}"
                     .format(repr(type(date)), repr(date)))
-            converted_transaction["date"] = date_str
-        converted_transactions.append(converted_transaction)
-    return json.dumps(converted_transactions, indent=2)
+            transaction["date"] = date_str
+        transactions.append(transaction)
+    ledger = dict(ledger)
+    ledger["transactions"] = transactions
+    return json.dumps(ledger, indent=2)
 
-def deserialize_transactions(transactions_json):
-    transactions = json.loads(transactions_json)
-    for transaction in transactions:
+def deserialize_ledger(ledger_json):
+    try:
+        ledger = json.loads(ledger_json)
+    except json.decoder.JSONDecodeError as e:
+        raise UserDataError("malformed JSON: {}".format(str(e)))
+    for transaction in ledger["transactions"]:
         if "date" in transaction:
             date = transaction["date"]
             try:
@@ -120,7 +125,7 @@ def deserialize_transactions(transactions_json):
             except ValueError:
                 raise UserDataError("malformed date: {}".format(date))
             transaction["date"] = date
-    return transactions
+    return ledger
 
 ## Subcommands
 ### init

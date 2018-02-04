@@ -9,7 +9,7 @@ InvalidInputError = acc.UserDataError
 
 HEADER_ROWS = 4
 
-def parse_row(row, row_id):
+def parse_row(row, row_id, account):
     elevations_id = row[0]
     date = row[1]
     elevations_description = row[2]
@@ -86,6 +86,7 @@ def parse_row(row, row_id):
         "description": description,
         "amount": amount,
         "type": transaction_type,
+        "account": account,
         "date": date,
         "elevations_id": elevations_id,
         "elevations_description": elevations_description,
@@ -94,19 +95,24 @@ def parse_row(row, row_id):
         "elevations_check_number": elevations_check_number,
     }
 
-def read_csv(csv_file):
+def read_csv(csv_file, account):
     transactions = []
     with open(csv_file, newline="") as f:
         reader = csv.reader(f)
         for i in range(HEADER_ROWS):
             next(reader)
         for idx, row in enumerate(reader, HEADER_ROWS + 1):
-            transactions.append(parse_row(row, idx))
-    return transactions
+            transactions.append(parse_row(row, idx, account))
+    return {
+        "metadata": {
+            "accounts": [account],
+        },
+        "transactions": transactions,
+    }
 
 ## Command line
 
-USAGE = "--from <csv-file> --to <json-file>"
+USAGE = "--from <csv-file> --to <json-file> --account <account>"
 
 def usage():
     return acc.UsageError(USAGE)
@@ -114,6 +120,7 @@ def usage():
 def run(args, io):
     csv_path = None
     json_path = None
+    account = None
     while args:
         if args[0] == "--from":
             if len(args) == 1:
@@ -125,16 +132,21 @@ def run(args, io):
                 raise usage()
             json_path = args[1]
             args = args[2:]
+        elif args[0] == "--account":
+            if len(args) == 1:
+                raise usage()
+            account = args[1]
+            args = args[2:]
         else:
             raise usage()
-    if csv_path is None or json_path is None:
+    if csv_path is None or json_path is None or account is None:
         raise usage()
     try:
-        transactions = read_csv(csv_path)
+        ledger = read_csv(csv_path, account)
     except OSError as e:
         raise acc.FilesystemError(
             "could not read file {}: {}".format(repr(csv_path), str(e)))
-    transactions_str = acc.serialize_transactions(transactions)
+    ledger_str = acc.serialize_ledger(ledger)
     json_dir = io.dirname(json_path)
     try:
         io.makedirs(json_dir, exist_ok=True)
@@ -143,7 +155,7 @@ def run(args, io):
             "could not create directory {}: {}".format(repr(json_dir), str(e)))
     try:
         with open(json_path, "w") as f:
-            f.write(transactions_str)
+            f.write(ledger_str)
             f.write("\n")
     except IOError as e:
         raise acc.FilesystemError(

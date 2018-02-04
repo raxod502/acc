@@ -119,7 +119,12 @@ def read_csv(csv_file):
     lines = lines[HEADER_ROWS:-FOOTER_ROWS]
     for idx, row in enumerate(lines, HEADER_ROWS + 1):
         transactions.append(parse_row(row, idx))
-    return transactions
+    return {
+        "metadata": {
+            "accounts": ACCOUNTS,
+        },
+        "transactions": transactions,
+    }
 
 ## Command line
 
@@ -147,11 +152,11 @@ def run(args, io):
     if csv_path is None or json_path is None:
         raise usage()
     try:
-        transactions = read_csv(csv_path)
+        ledger = read_csv(csv_path)
     except OSError as e:
         raise acc.FilesystemError(
             "could not read file {}: {}".format(repr(csv_path), str(e)))
-    transactions_str = acc.serialize_transactions(transactions)
+    ledger_str = acc.serialize_ledger(ledger)
     json_dir = io.dirname(json_path)
     try:
         io.makedirs(json_dir, exist_ok=True)
@@ -160,7 +165,7 @@ def run(args, io):
             "could not create directory {}: {}".format(repr(json_dir), str(e)))
     try:
         with open(json_path, "w") as f:
-            f.write(transactions_str)
+            f.write(ledger_str)
             f.write("\n")
     except IOError as e:
         raise acc.FilesystemError(
