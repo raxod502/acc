@@ -21,6 +21,7 @@ class IO:
         self.mkdir = os.mkdir
         self.run = subprocess.run
         self.join = os.path.join
+        self.makedirs = os.makedirs
 
 if __name__ == "__main__":
     program_name = "acc"

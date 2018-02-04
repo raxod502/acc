@@ -1,5 +1,6 @@
 import datetime
 import importlib
+import json
 
 ## Exceptions
 
@@ -19,6 +20,12 @@ class FilesystemError(Failure):
     pass
 
 class ExternalCommandError(Failure):
+    pass
+
+class InternalError(Failure):
+    pass
+
+class UserDataError(Failure):
     pass
 
 ## Usage
@@ -41,7 +48,7 @@ def usage():
     return UsageError(USAGE)
 
 def subcommand_usage(subcommand):
-    return SUBCOMMAND_USAGE[subcommand]
+    return UsageError(SUBCOMMAND_USAGE[subcommand])
 
 ## IOWrapper
 
@@ -70,13 +77,44 @@ class IOWrapper:
 
 ## Miscellaneous
 
-def json_serializer(obj):
-    if isinstance(obj, datetime.date):
-        return obj.strftime("%Y-%m-%d")
-    if isinstance(obj, datetime.datetime):
-        return obj.strftime("%Y-%m-%d %H:%M:%S%z")
-    raise TypeError(
-        "Object of type '{}' is not JSON serializable".format(type(obj)))
+DATE_FORMAT = "%Y-%m-%d"
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
+
+def is_datetime(date):
+    return ":" in date
+
+def serialize_transactions(transactions):
+    converted_transactions = []
+    for transaction in transactions:
+        date = transaction["date"]
+        if date is None:
+            date_str = None
+        elif isinstance(date, datetime.date):
+            date_str = date.strftime(DATE_FORMAT)
+        elif isinstance(date, datetime.datetime):
+            date_str = date.strftime(DATETIME_FORMAT)
+        else:
+            raise InternalError(
+                "cannot serialize date of type {}: {}"
+                .format(repr(type(date)), repr(date)))
+        converted_transaction = dict(transaction)
+        converted_transaction["date"] = date_str
+        converted_transactions.append(converted_transaction)
+    return json.dumps(converted_transactions, indent=2)
+
+def deserialize_transactions(transactions_json):
+    transactions = json.loads(transactions_json)
+    for transaction in transactions:
+        date = transaction["date"]
+        try:
+            if is_datetime(date):
+                date = datetime.datetime.strptime(DATETIME_FORMAT)
+            else:
+                date = datetime.datetime.strptime(DATE_FORMAT).date()
+        except ValueError:
+            raise UserDataError("malformed date: {}".format(date))
+        transaction["date"] = date
+    return transactions
 
 ## Subcommands
 ### init
@@ -137,7 +175,7 @@ def subcommand_import(args, io):
     try:
         importer.run(args, io)
     except UsageError as e:
-        raise UsageError("import " + importer_name + " " + str(e))
+        raise UsageError(importer_name + " " + str(e))
 
 ### merge
 
@@ -185,3 +223,7 @@ def command_line(program_name, args, io):
     except Success:
         pass
     return 0
+
+# Local Variables:
+# outline-regexp: "##* "
+# End:

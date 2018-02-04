@@ -2,7 +2,6 @@ import acc
 
 import csv
 import dateutil.parser
-import json
 import uuid
 
 ## Parsing
@@ -100,7 +99,7 @@ def parse_row(row, row_id):
         "elevations_check_number": elevations_check_number,
     }
 
-def parse_csv(csv_file):
+def read_csv(csv_file):
     transactions = []
     with open(csv_file) as f:
         reader = csv.reader(f)
@@ -133,9 +132,24 @@ def run(args, io):
             args = args[2:]
         else:
             raise usage()
+    if csv_path is None or json_path is None:
+        raise usage()
     try:
-        transactions = parse_csv(csv_path)
+        transactions = read_csv(csv_path)
+    except OSError as e:
+        raise acc.FilesystemError(
+            "could not read file {}: {}".format(repr(csv_path), str(e)))
+    transactions_str = acc.serialize_transactions(transactions)
+    json_dir = io.dirname(json_path)
+    try:
+        io.makedirs(json_dir, exist_ok=True)
+    except OSError as e:
+        raise acc.FilesystemError(
+            "could not create directory {}: {}".format(repr(json_dir), str(e)))
+    try:
+        with open(json_path, "w") as f:
+            f.write(transactions_str)
+            f.write("\n")
     except IOError as e:
         raise acc.FilesystemError(
-            "could not open file {}: {}".format(repr(csv_path), str(e)))
-    # FIXME: write json file
+            "could not write file {}: {}".format(repr(json_path), str(e)))
