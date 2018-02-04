@@ -1,6 +1,7 @@
 import datetime
 import importlib
 import json
+import uuid
 
 ## Exceptions
 
@@ -77,6 +78,9 @@ class IOWrapper:
 
 ## Miscellaneous
 
+def random_transaction_id():
+    return str(uuid.uuid4())
+
 DATE_FORMAT = "%Y-%m-%d"
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 
@@ -86,34 +90,36 @@ def is_datetime(date):
 def serialize_transactions(transactions):
     converted_transactions = []
     for transaction in transactions:
-        date = transaction["date"]
-        if date is None:
-            date_str = None
-        elif isinstance(date, datetime.date):
-            date_str = date.strftime(DATE_FORMAT)
-        elif isinstance(date, datetime.datetime):
-            date_str = date.strftime(DATETIME_FORMAT)
-        else:
-            raise InternalError(
-                "cannot serialize date of type {}: {}"
-                .format(repr(type(date)), repr(date)))
         converted_transaction = dict(transaction)
-        converted_transaction["date"] = date_str
+        if "date" in transaction:
+            date = transaction["date"]
+            if date is None:
+                date_str = None
+            elif isinstance(date, datetime.date):
+                date_str = date.strftime(DATE_FORMAT)
+            elif isinstance(date, datetime.datetime):
+                date_str = date.strftime(DATETIME_FORMAT)
+            else:
+                raise InternalError(
+                    "cannot serialize date of type {}: {}"
+                    .format(repr(type(date)), repr(date)))
+            converted_transaction["date"] = date_str
         converted_transactions.append(converted_transaction)
     return json.dumps(converted_transactions, indent=2)
 
 def deserialize_transactions(transactions_json):
     transactions = json.loads(transactions_json)
     for transaction in transactions:
-        date = transaction["date"]
-        try:
-            if is_datetime(date):
-                date = datetime.datetime.strptime(DATETIME_FORMAT)
-            else:
-                date = datetime.datetime.strptime(DATE_FORMAT).date()
-        except ValueError:
-            raise UserDataError("malformed date: {}".format(date))
-        transaction["date"] = date
+        if "date" in transaction:
+            date = transaction["date"]
+            try:
+                if is_datetime(date):
+                    date = datetime.datetime.strptime(DATETIME_FORMAT)
+                else:
+                    date = datetime.datetime.strptime(DATE_FORMAT).date()
+            except ValueError:
+                raise UserDataError("malformed date: {}".format(date))
+            transaction["date"] = date
     return transactions
 
 ## Subcommands

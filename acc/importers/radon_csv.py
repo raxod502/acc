@@ -1,6 +1,11 @@
+import acc
+
 import csv
 import dateutil.parser
-import uuid
+
+## Parsing
+
+InvalidInputError = acc.UserDataError
 
 ACCOUNTS = (
     "cash",
@@ -16,14 +21,7 @@ ACCOUNTS = (
 HEADER_ROWS = 3
 FOOTER_ROWS = 1
 
-class InvalidInputError(Exception):
-    pass
-
-def random_id():
-    return str(uuid.uuid4())
-
-def parse_money(money):
-    err = InvalidInputError("Couldn't parse monetary value: " + repr(money))
+def parse_money(money, row_num):
     if not money:
         return 0.0
     if money.startswith("$"):
@@ -31,13 +29,15 @@ def parse_money(money):
     elif money.startswith("-$"):
         money = "-" + money[2:]
     else:
-        raise err
+        raise InvalidInputError("malformed monetary value in row {}: {}"
+                                .format(row_num, repr(money)))
     try:
         return float(money.replace(",", ""))
     except ValueError:
-        raise err
+        raise InvalidInputError("malformed monetary value in row {}: {}"
+                                .format(row_num, repr(money)))
 
-def csv_row_to_transaction(row, row_num):
+def parse_row(row, row_num):
     date = row[0]
     description = row[2]
     transaction_id = row[3]
@@ -48,32 +48,36 @@ def csv_row_to_transaction(row, row_num):
     try:
         date = dateutil.parser.parse(date)
     except ValueError as e:
-        raise InvalidInputError("Couldn't parse date: " + repr(date))
+        raise InvalidInputError("malformed date in row {}: {}".format(row_num, repr(date)))
     if not description:
-        raise InvalidInputError
+        raise InvalidInputError("missing description in row {}".format(row_num))
     if not transaction_id:
-        raise InvalidInputError
+        raise InvalidInputError("missing transaction ID in row {}".format(row_num))
     if not category:
-        raise InvalidInputError
+        raise InvalidInputError("missing category in row {}".format(row_num))
     if pending not in ["", "yes"]:
-        raise InvalidInputError
+        raise InvalidInputError("malformed 'pending' specifier in row {}: {}"
+                                .format(row_num, repr(pending)))
     pending = bool(pending)
 
-    deltas = list(map(parse_money, deltas))
+    deltas = list(map(lambda money: parse_money(money, row_num), deltas))
     nonzero_indices = []
     for idx, delta in enumerate(deltas):
         if delta != 0.0:
             nonzero_indices.append(idx)
     if len(nonzero_indices) not in (1, 2):
+        deltas = [deltas[idx] for idx in nonzero_indices]
         raise InvalidInputError(
-            "Need exactly one or two deltas in row {}, got: {}"
-            .format(row_num, repr([deltas[idx] for idx in nonzero_indices])))
+            "need exactly one or two deltas in row {}, got {}: {}"
+            .format(row_num, len(deltas), repr(deltas)))
     if len(nonzero_indices) == 2:
         transaction_type = "transfer"
         delta1 = deltas[nonzero_indices[0]]
         delta2 = deltas[nonzero_indices[1]]
         if delta1 != -delta2:
-            raise InvalidInputError
+            raise InvalidInputError(
+                "unbalanced transfer in row {}, got deltas {} and {}"
+                .format(delta1, delta2))
         amount = abs(delta1)
         if delta1 < 0:
             source = ACCOUNTS[nonzero_indices[0]]
@@ -91,7 +95,7 @@ def csv_row_to_transaction(row, row_num):
         account = ACCOUNTS[nonzero_indices[0]]
 
     trans = {
-        "id": random_id(),
+        "id": acc.random_transaction_id(),
         "description": description,
         "amount": amount,
         "type": transaction_type,
@@ -108,11 +112,56 @@ def csv_row_to_transaction(row, row_num):
 
     return trans
 
-def csv_file_to_transactions(filename):
+def read_csv(csv_file):
     transactions = []
-    with open(filename, newline="") as f:
+    with open(csv_file, newline="") as f:
         lines = list(csv.reader(f))
-        lines = lines[HEADER_ROWS:-FOOTER_ROWS]
-        for idx, row in enumerate(lines, HEADER_ROWS):
-            transactions.append(csv_row_to_transaction(row, idx))
+    lines = lines[HEADER_ROWS:-FOOTER_ROWS]
+    for idx, row in enumerate(lines, HEADER_ROWS + 1):
+        transactions.append(parse_row(row, idx))
     return transactions
+
+## Command line
+
+USAGE = "--from <csv-file> --to <json-file>"
+
+def usage():
+    return acc.UsageError(USAGE)
+
+def run(args, io):
+    csv_path = None
+    json_path = None
+    while args:
+        if args[0] == "--from":
+            if len(args) == 1:
+                raise usage()
+            csv_path = args[1]
+            args = args[2:]
+        elif args[0] == "--to":
+            if len(args) == 1:
+                raise usage()
+            json_path = args[1]
+            args = args[2:]
+        else:
+            raise usage()
+    if csv_path is None or json_path is None:
+        raise usage()
+    try:
+        transactions = read_csv(csv_path)
+    except OSError as e:
+        raise acc.FilesystemError(
+            "could not read file {}: {}".format(repr(csv_path), str(e)))
+    transactions_str = acc.serialize_transactions(transactions)
+    json_dir = io.dirname(json_path)
+    try:
+        io.makedirs(json_dir, exist_ok=True)
+    except OSError as e:
+        raise acc.FilesystemError(
+            "could not create directory {}: {}".format(repr(json_dir), str(e)))
+    try:
+        with open(json_path, "w") as f:
+            f.write(transactions_str)
+            f.write("\n")
+    except IOError as e:
+        raise acc.FilesystemError(
+            "could not write file {}: {}".format(repr(json_path), str(e)))

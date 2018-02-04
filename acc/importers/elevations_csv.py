@@ -2,17 +2,12 @@ import acc
 
 import csv
 import dateutil.parser
-import uuid
 
 ## Parsing
 
+InvalidInputError = acc.UserDataError
+
 HEADER_ROWS = 4
-
-class InvalidInputError(Exception):
-    pass
-
-def random_id():
-    return str(uuid.uuid4())
 
 def parse_row(row, row_id):
     elevations_id = row[0]
@@ -25,17 +20,17 @@ def parse_row(row, row_id):
     elevations_check_number = row[7]
 
     if not elevations_id:
-        raise InvalidInputError("No transaction ID for row {}"
+        raise InvalidInputError("missing transaction ID in row {}"
                                 .format(row_id))
 
     try:
         date = dateutil.parser.parse(date)
     except ValueError:
-        raise InvalidInputError("Could not parse date for row {}: {}"
+        raise InvalidInputError("malformed date in row {}: {}"
                                 .format(row_id, repr(date)))
 
     if not elevations_description:
-        raise InvalidInputError("No description for row {}".format(row_id))
+        raise InvalidInputError("missing description in row {}".format(row_id))
 
     if not elevations_memo:
         elevations_memo = None
@@ -44,7 +39,7 @@ def parse_row(row, row_id):
         try:
             debit_delta = float(debit_delta)
         except ValueError:
-            raise InvalidInputError("Malformed debit for row {}: {}"
+            raise InvalidInputError("malformed debit in row {}: {}"
                                     .format(row_id, repr(debit_delta)))
     else:
         debit_delta = 0
@@ -53,7 +48,7 @@ def parse_row(row, row_id):
         try:
             credit_delta = float(credit_delta)
         except ValueError:
-            raise InvalidInputError("Malformed credit for row {}: {}"
+            raise InvalidInputError("malformed credit in row {}: {}"
                                     .format(row_id, repr(credit_delta)))
     else:
         credit_delta = 0
@@ -61,7 +56,7 @@ def parse_row(row, row_id):
     try:
         elevations_balance = float(elevations_balance)
     except ValueError:
-        raise InvalidInputError("Malformed balance for row {}: {}"
+        raise InvalidInputError("malformed balance in row {}: {}"
                                 .format(row_id, repr(elevations_balance)))
 
     if not elevations_check_number:
@@ -72,11 +67,11 @@ def parse_row(row, row_id):
         description += ": " + elevations_memo
 
     if debit_delta and credit_delta:
-        raise InvalidInputError("Both credit and debit for row {}"
+        raise InvalidInputError("both credit and debit in row {}"
                                 .format(row_id))
 
     if not debit_delta and not credit_delta:
-        raise InvalidInputError("Neither credit nor debit for row {}"
+        raise InvalidInputError("neither credit nor debit in row {}"
                                 .format(row_id))
 
     if debit_delta:
@@ -87,7 +82,7 @@ def parse_row(row, row_id):
         amount = credit_delta
 
     return {
-        "id": random_id(),
+        "id": acc.random_transaction_id(),
         "description": description,
         "amount": amount,
         "type": transaction_type,
@@ -101,7 +96,7 @@ def parse_row(row, row_id):
 
 def read_csv(csv_file):
     transactions = []
-    with open(csv_file) as f:
+    with open(csv_file, newline="") as f:
         reader = csv.reader(f)
         for i in range(HEADER_ROWS):
             next(reader)
