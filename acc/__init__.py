@@ -223,7 +223,3 @@ def command_line(program_name, args, io):
     except Success:
         pass
     return 0
-
-# Local Variables:
-# outline-regexp: "##* "
-# End:
