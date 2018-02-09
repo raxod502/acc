@@ -13,6 +13,7 @@ transactions in JSON format.
     Available subcommands:
         init [--git | --no-git] [--] <dir>
         import <importer> [<arg>...]
+        merge [--append-only | --no-append-only] [--] <source-ledger> <target-ledger>
         help
 
 Running `acc init` creates the specified directory, by default
@@ -22,65 +23,79 @@ mostly up to you, that's all it does.
 
 Running `acc import` allows you to import external data into an `acc`
 ledger file. Importers are Python modules in the `acc.importers`
-namespace, so for example you can use the `elevations_csv` importer by
-running `acc import elevations_csv`. Each importer will expect
-different command-line arguments.
+namespace, so for example you can use the importer defined by the
+`acc.importers.elevations_csv` module by running `acc import
+elevations_csv`. Each importer will expect different command-line
+arguments. Generally they will be given some file as input and produce
+a ledger file containing the imported data.
+
+Running `acc merge` allows you to integrate newly imported data into
+an existing ledger without overwriting it.
+
+## Configuration
+
+Configuration of `acc` is done by creating a file `config.json` in
+some superdirectory of the working directory. If no `config.json` is
+found then default configuration is used.
+
+`config.json` is in JSON format. The top level must be a map. It
+optionally has key `aliases`, which is a map of alias names (strings)
+to alias definitions (strings).
+
+When `acc` is invoked and the first argument matches a defined alias,
+the definition of the alias is read from configuration and split
+using [`shlex.split`][shlex] (so whitespace can be included in
+arguments via quoting). Then the first argument is replaced with all
+arguments taken from the alias definition, and command lookup resumes.
+It is possible to create an alias to an existing command. It will be
+expanded once before delegating to the existing command. Creating
+mutually recursive aliases has undefined behavior.
+
+Here is an example of an alias definition:
+
+    "import-checking": "import elevations_csv --from external/checking.csv --to import/checking.json --account checking"
 
 ## Ledger file format
 
 Ledger files are pretty-printed JSON. The top level is a map with keys
-`metadata` and `transactions` (other keys are untouched). `metadata`
-is a map ... FIXME
+`metadata` and `transactions` (other keys are allowed and left
+untouched). `metadata` is a map with key `accounts` (other keys are
+allowed and left untouched). `accounts` is a list of strings (without
+duplicates) naming the accounts that are tracked in this ledger file.
+`transactions` is a list of maps, each identifying a distinct
+transaction that has occurred. Transaction maps have keys `id`
+(required), `description`, `amount` (required), `type` (required),
+either `account` (when `type` is `debit` or `credit`) or
+`source-account` and `target-account` (when `type` is `transfer`), and
+`date` (required), `tags`, and `references` (other keys are allowed
+and left untouched). `id` is a unique string for the transaction
+(typically an auto-generated GUID). `description` is a human-readable
+string recording the purpose of the transaction. `amount` is a
+floating-point number naming the transaction size in dollars. `type`
+may be either `debit`, `credit`, or `transfer` and describes how the
+`amount` of the transaction affects the balances of its `account`
+and/or `source-account` and `target-account` (`credit` means balance
+of `account` is increased by `amount`; `debit` means balance of
+`account` is decreased by `amount`; `transfer` means balance of
+`source-account` is decreased by `amount` and balance of
+`target-account` is increased by `amount`). `account`,
+`source-account`, and `target-account` are strings naming accounts
+that were listed under `accounts` in `metadata`. `date` is a string
+identifying the date and/or time of the transaction, in format either
+`%Y-%m-%d` or `%Y-%m-%d %H:%M:%S%z` (see [strftime format][strftime]).
+`tags` is a list of strings identifying categories for filtering and
+aggregation. `references` is a map with string keys; each value is a
+map with keys `primary` and `foreign` (both optional). The values for
+each of those keys are lists of transaction IDs, with `primary` IDs
+referencing other transactions in the same ledger and `foreign` IDs
+referencing other transactions in the ledger identified (in a manner
+specified on the command line) by the key in the `references` map.
 
-    {
-      "metadata": {
-        "accounts": [
-          <string>, ...
-        ]
-      },
-      "transactions": [
-        {
-          "id": <string>,
-          "description": <string>,
-          "amount":
-        }
-      ]
-    }
+## TODO
 
-## File format
+* Implement ledger merging
+* Implement ledger reconciliation
+* Show defined aliases as part of top-level usage message
 
-A *ledger file* is in JSON format. It contains a list of maps, each of
-which may have a number of keys indicating metadata, as follows:
-
-* `id` (string, required): Unique identifier used as a foreign key in
-  other files. This is typically a randomly generated UUID.
-* `amount` (floating-point, required): The monetary value of the
-  transaction, in dollars. If this is negative then the direction of
-  the transaction is reversed.
-* `type` (string, required): Either `credit`, `debit`, or `transfer`.
-  Identifies the type of the transaction.
-* `account` (string, required unless `type` is `transfer`): The name
-  of the account being credited or debited.
-* `source-account` (string, required when `type` is `transfer`): The
-  name of the account being debited.
-* `target-account` (string, required when `type` is `transfer`): The
-  name of the account being credited.
-* `date` (string, optional): The date (and optionally time) of the
-  transaction. This can be in any format parseable by
-  `dateutil.parser`.
-* `tags` (list of strings, optional): Arbitrary identifiers which can
-  be used for categorization.
-
-## Ledger import
-
-Bank statements can be imported using *ledger importers*. An import
-plugin is a Python module which produces `acc` transaction data,
-presumably from an external source such as a bank website. Typically
-bank statements are append-only ledgers, and updating them constitutes
-appending to a file on disk.
-
-## Ledger reconciliation
-
-Links between different ledger files may be established using the `id`
-field of transactions. The `links` key in a transaction contains a map
-of account names to lists of transaction IDs.
+[shlex]: https://docs.python.org/3/library/shlex.html#shlex.split
+[strftime]: http://strftime.org/
