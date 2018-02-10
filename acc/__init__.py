@@ -18,10 +18,10 @@ class Success(Exit):
 class Failure(Exit):
     pass
 
-class RawUsageError(Failure):
+class UsageError(Failure):
     pass
 
-class UsageError(Failure):
+class StandardUsageError(Failure):
     pass
 
 class FilesystemError(Failure):
@@ -38,45 +38,58 @@ class UserDataError(Failure):
 
 ## Usage
 
-USAGE = """[-C <dir>] <subcommand> [<arg>...]
-
-Available subcommands:
-    init [--git | --no-git] [--] <dir>
-    import <importer> [<arg>...]
-    help"""
+TOPLEVEL_USAGE = """[-C <dir>] <subcommand> [<arg>...]"""
 
 SUBCOMMAND_USAGE = {
     "init": "[--git | --no-git] [--] <dir>",
     "import": "<importer> [<arg>...]",
+    "merge": "[--append-only | --no-append-only] [--] <source-ledger> <target-ledger>",
 }
 
-def usage():
-    return UsageError(USAGE)
+SUBCOMMANDS = ["init", "import", "merge"]
 
-def subcommand_usage(subcommand):
-    return UsageError(SUBCOMMAND_USAGE[subcommand])
+assert len(SUBCOMMANDS) == len(set(SUBCOMMANDS))
+assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE.keys())
+
+def usage(subcommand=None, config=None, config_error=None):
+    if subcommand is None:
+        message = TOPLEVEL_USAGE
+        message += "\n\nAvailable subcommands:"
+        for subcommand in SUBCOMMANDS:
+            message += "\n    {} {}".format(
+                subcommand, SUBCOMMAND_USAGE[subcommand])
+        if config:
+            message += "\n\nDefined aliases:"
+            for alias in sorted(config["aliases"]):
+                message += "\n    " + alias
+        if config_error:
+            message += "\n\nError while loading config file:\n  "
+            message += str(config_error)
+        return message
+    else:
+        return subcommand + " " + SUBCOMMAND_USAGE[subcommand]
+
+def usage_error(*args, **kwargs):
+    return StandardUsageError(usage(*args, **kwargs))
 
 ## IOWrapper
 
 class IOWrapper:
-    def __init__(self, io, program_name):
+    def __init__(self, io, exec_name):
         self.io = io
-        self.program_name = program_name
+        self.exec_name = exec_name
 
     def print(self, *args, stream=None, **kwargs):
         if stream is None:
             stream = self.io.stdout
-        print(*args, file=self.io.stdout, **kwargs)
+        print(*args, file=stream, **kwargs)
+
+    def print_stderr(self, *args, **kwargs):
+        print(*args, file=self.io.stderr, **kwargs)
 
     def print_error(self, text):
-        message = "{}: {}".format(self.program_name, text)
-        self.print(message, stream=self.io.stderr)
-
-    def print_usage(self, usage, stream=None):
-        if stream is None:
-            stream = self.io.stderr
-        message = "usage: {} {}".format(self.program_name, usage)
-        self.print(message, stream=stream)
+        message = "{}: {}".format(self.exec_name, text)
+        self.print_stderr(message)
 
     def __getattr__(self, name):
         return getattr(self.io, name)
@@ -156,9 +169,9 @@ def subcommand_init(args, io):
         if path is None:
             path = arg
             continue
-        raise subcommand_usage("init")
+        raise usage_error("init")
     if path is None:
-        raise subcommand_usage("init")
+        raise usage_error("init")
     if using_git and not io.which("git"):
         raise ExternalCommandError("command not found: git")
     parent = io.dirname(io.abspath(path))
@@ -198,17 +211,24 @@ def format_importer_list():
 
 def subcommand_import(args, io):
     if not args:
-        raise UsageError(SUBCOMMAND_USAGE["import"] + format_importer_list())
+        message = SUBCOMMAND_USAGE["import"] + format_importer_list()
+        raise StandardUsageError(message)
     importer_name, *args = args
     module_name = "acc.importers.{}".format(importer_name)
     if not importlib.util.find_spec(module_name):
-        raise FilesystemError("no such module: {}".format(module_name) +
-                              format_importer_list())
+        message = "no such module: {}{}".format(
+            module_name, format_importer_list())
+        raise FilesystemError(message)
     importer = importlib.import_module(module_name)
     try:
         importer.run(args, io)
-    except UsageError as e:
-        raise UsageError(importer_name + " " + str(e))
+    except StandardUsageError as e:
+        raise StandardUsageError(importer_name + " " + str(e))
+
+### merge
+
+def subcommand_merge(args, io):
+    pass
 
 ## Configuration
 
@@ -254,33 +274,43 @@ def load_config_file(filename, io):
         config["aliases"] = {}
     return config
 
+def get_config(io):
+    config_file = locate_dominating_file("config.json", io)
+    return load_config_file(config_file, io)
+
 ## Command line
 
 SUBCOMMANDS = {
     "init": subcommand_init,
     "import": subcommand_import,
+    "merge": subcommand_merge,
 }
 
-def command_line(program_name, args, io):
-    io = IOWrapper(io, program_name)
+def command_line(exec_name, args, io):
+    io = IOWrapper(io, exec_name)
     try:
         while args and args[0] == "-C":
             if len(args) == 1:
-                raise usage()
+                raise usage_error()
             path = args[1]
             if not io.isdir(path):
                 raise FilesystemError("no such directory: {}".format(path))
             io.chdir(path)
             args = args[2:]
+        try:
+            config = get_config(io)
+            config_error = None
+        except Failure as e:
+            config = None
+            config_error = e
         if not args:
-            raise usage()
+            raise usage_error(config=config, config_error=config_error)
         commands = [args]
         subcommand, *args = args
         if subcommand in ("help", "-h", "-help", "--help", "-?"):
-            io.print_usage(stream=io.stdout)
+            message = usage(config=config, config_error=config_error)
+            io.print("usage: " + io.exec_name + " " + message)
         else:
-            config_file = locate_dominating_file("config.json", io)
-            config = load_config_file(config_file, io)
             seen_aliases = set()
             try:
                 while subcommand in config["aliases"]:
@@ -288,12 +318,12 @@ def command_line(program_name, args, io):
                         if subcommand in SUBCOMMANDS:
                             break
                         else:
-                            raise RawUsageError(
+                            raise UsageError(
                                 "alias {} expands to itself".format(repr(subcommand)))
                     alias_args = shlex.split(config["aliases"][subcommand])
                     args = alias_args + args
                     if not args:
-                        raise RawUsageError(
+                        raise UsageError(
                             "usage of alias {} expands to empty command"
                             .format(repr(subcommand)))
                     seen_aliases.add(subcommand)
@@ -302,19 +332,19 @@ def command_line(program_name, args, io):
                 if subcommand in SUBCOMMANDS:
                     try:
                         SUBCOMMANDS[subcommand](args, io)
-                    except UsageError as e:
-                        raise UsageError(subcommand + " " + str(e))
+                    except StandardUsageError as e:
+                        raise StandardUsageError(subcommand + " " + str(e))
                 else:
-                    raise RawUsageError("no such command or alias: {}"
-                                        .format(subcommand))
+                    raise UsageError("no such command or alias: {}"
+                                     .format(subcommand))
             except Failure as e:
                 if len(commands) > 1:
                     for command in commands:
-                        io.print("> " + quote_command(command), stream=io.stderr)
-                    io.print(stream=io.stderr)
+                        io.print_stderr("> " + quote_command(command))
+                    io.print_stderr()
                 raise
-    except UsageError as e:
-        io.print_usage(str(e))
+    except StandardUsageError as e:
+        io.print_stderr("usage: " + io.exec_name + " " + str(e))
         return 1
     except Failure as e:
         io.print_error(str(e))

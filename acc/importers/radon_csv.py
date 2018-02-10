@@ -131,7 +131,7 @@ def read_csv(csv_file, io):
 USAGE = "--from <csv-file> --to <json-file>"
 
 def usage():
-    return acc.UsageError(USAGE)
+    return acc.StandardUsageError(USAGE)
 
 def run(args, io):
     csv_path = None

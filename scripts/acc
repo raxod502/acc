@@ -27,6 +27,6 @@ class IO:
         self.isfile = os.path.isfile
 
 if __name__ == "__main__":
-    program_name = "acc"
+    exec_name = "acc"
     args = sys.argv[1:]
-    sys.exit(acc.command_line(program_name, args, IO()))
+    sys.exit(acc.command_line(exec_name, args, IO()))
