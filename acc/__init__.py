@@ -227,7 +227,79 @@ def subcommand_import(args, io):
 ### merge
 
 def subcommand_merge(args, io):
-    pass
+    source_file = None
+    target_file = None
+    append_only = True
+    args_done = False
+    for arg in args:
+        if not args_done:
+            if arg == "--append-only":
+                append_only = True
+                continue
+            if arg == "--no-append-only":
+                append_only = False
+                continue
+            if arg == "--":
+                args_done = True
+                continue
+        if source_file is None:
+            source_file = arg
+            continue
+        if target_file is None:
+            target_file = arg
+            continue
+        raise usage_error("merge")
+    if source_file is None or target_file is None:
+        raise usage_error("merge")
+    if not io.isfile(source_file):
+        raise FilesystemError("no such file: {}".format(source_file))
+    try:
+        with open(source_file) as f:
+            source_ledger = f.read()
+    except OSError as e:
+        raise FilesystemError("could not read file {}: {}"
+                              .format(repr(source_file, str(e))))
+    try:
+        source_ledger = deserialize_ledger(source_ledger)
+    except Failure as e:
+        raise type(e)("in file {}: {}".format(repr(source_file), str(e)))
+    if io.isfile(target_file):
+        try:
+            with open(target_file) as f:
+                target_ledger = f.read()
+        except OSError as e:
+            raise FilesystemError("could not read file {}: {}"
+                                  .format(repr(target_file, str(e))))
+        try:
+            target_ledger = deserialize_ledger(target_ledger)
+        except Failure as e:
+            raise type(e)("in file {}: {}".format(repr(target_file), str(e)))
+    else:
+        target_ledger = None
+    if target_ledger is None:
+        merged_ledger = source_ledger
+    else:
+        import jsondiff
+        import pprint
+        diff = jsondiff.diff(source_ledger, target_ledger)
+        pprint.pprint(diff)
+        raise NotImplementedError
+    ledger_str = serialize_ledger(merged_ledger)
+    target_dir = io.dirname(io.abspath(target_file))
+    try:
+        io.makedirs(target_dir, exist_ok=True)
+    except OSError as e:
+        raise FilesystemError(
+            "could not create directory {}: {}"
+            .format(repr(target_dir), str(e)))
+    try:
+        with io.open(target_file, "w") as f:
+            f.write(ledger_str)
+            f.write("\n")
+    except OSError as e:
+        raise FilesystemError(
+            "could not write file {}: {}"
+            .format(repr(target_file), str(e)))
 
 ## Configuration
 
