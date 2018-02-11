@@ -58,16 +58,17 @@ def usage(subcommand=None, config=None, config_error=None):
         for subcommand in SUBCOMMANDS:
             message += "\n    {} {}".format(
                 subcommand, SUBCOMMAND_USAGE[subcommand])
+        message += "\n    help"
         if config:
             message += "\n\nDefined aliases:"
             for alias in sorted(config["aliases"]):
                 message += "\n    " + alias
         if config_error:
-            message += "\n\nError while loading config file:\n  "
+            message += "\n\nError while loading config file:\n    "
             message += str(config_error)
         return message
     else:
-        return subcommand + " " + SUBCOMMAND_USAGE[subcommand]
+        return SUBCOMMAND_USAGE[subcommand]
 
 def usage_error(*args, **kwargs):
     return StandardUsageError(usage(*args, **kwargs))
@@ -140,9 +141,9 @@ def deserialize_ledger(ledger_json):
             date = transaction["date"]
             try:
                 if is_datetime(date):
-                    date = datetime.datetime.strptime(DATETIME_FORMAT)
+                    date = datetime.datetime.strptime(date, DATETIME_FORMAT)
                 else:
-                    date = datetime.datetime.strptime(DATE_FORMAT).date()
+                    date = datetime.datetime.strptime(date, DATE_FORMAT).date()
             except ValueError:
                 raise UserDataError("malformed date: {}".format(date))
             transaction["date"] = date
@@ -188,9 +189,7 @@ def subcommand_init(args, io):
     if result.returncode != 0:
         raise ExternalCommandError("command failed: git init")
     config_file = io.join(path, "config.json")
-    config = {
-        "aliases": [],
-    }
+    config = load_config_file(None, io)
     try:
         with open(config_file, "w") as f:
             json.dump(config, f, indent=2)
@@ -274,10 +273,6 @@ def load_config_file(filename, io):
         config["aliases"] = {}
     return config
 
-def get_config(io):
-    config_file = locate_dominating_file("config.json", io)
-    return load_config_file(config_file, io)
-
 ## Command line
 
 SUBCOMMANDS = {
@@ -298,18 +293,22 @@ def command_line(exec_name, args, io):
             io.chdir(path)
             args = args[2:]
         try:
-            config = get_config(io)
+            config_file = locate_dominating_file("config.json", io)
+            config = load_config_file(config_file, io)
+            config_or_none = config if config_file is not None else None
             config_error = None
         except Failure as e:
-            config = None
+            config = config_or_none = None
             config_error = e
         if not args:
-            raise usage_error(config=config, config_error=config_error)
+            raise usage_error(config=config_or_none, config_error=config_error)
         commands = [args]
         subcommand, *args = args
         if subcommand in ("help", "-h", "-help", "--help", "-?"):
             message = usage(config=config, config_error=config_error)
             io.print("usage: " + io.exec_name + " " + message)
+        elif config_error:
+            raise config_error
         else:
             seen_aliases = set()
             try:

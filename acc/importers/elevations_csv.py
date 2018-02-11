@@ -147,7 +147,7 @@ def run(args, io):
         raise acc.FilesystemError(
             "could not read file {}: {}".format(repr(csv_path), str(e)))
     ledger_str = acc.serialize_ledger(ledger)
-    json_dir = io.dirname(json_path)
+    json_dir = io.dirname(io.abspath(json_path))
     try:
         io.makedirs(json_dir, exist_ok=True)
     except OSError as e:
@@ -157,6 +157,6 @@ def run(args, io):
         with io.open(json_path, "w") as f:
             f.write(ledger_str)
             f.write("\n")
-    except IOError as e:
+    except OSError as e:
         raise acc.FilesystemError(
             "could not write file {}: {}".format(repr(json_path), str(e)))
