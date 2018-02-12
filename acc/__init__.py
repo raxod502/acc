@@ -226,19 +226,24 @@ def subcommand_import(args, io):
 
 ### merge
 
+def transaction_similarity(t1, t2):
+    similarity = 0
+    keys = set(t1.keys()) | set(t2.keys())
+    for key in keys:
+        if t1.get(key) != t2.get(key):
+            similarity -= 1
+    return similarity
+
+def most_similar_transaction(transaction, transactions):
+    return max(filter(lambda t: t is not transactions, transactions),
+               key=lambda t: transaction_similarity(t, transaction))
+
 def subcommand_merge(args, io):
     source_file = None
     target_file = None
-    append_only = True
     args_done = False
     for arg in args:
         if not args_done:
-            if arg == "--append-only":
-                append_only = True
-                continue
-            if arg == "--no-append-only":
-                append_only = False
-                continue
             if arg == "--":
                 args_done = True
                 continue
@@ -279,11 +284,7 @@ def subcommand_merge(args, io):
     if target_ledger is None:
         merged_ledger = source_ledger
     else:
-        import jsondiff
-        import pprint
-        diff = jsondiff.diff(source_ledger, target_ledger)
-        pprint.pprint(diff)
-        raise NotImplementedError
+        raise NotImplementedError # FIXME
     ledger_str = serialize_ledger(merged_ledger)
     target_dir = io.dirname(io.abspath(target_file))
     try:
