@@ -8,7 +8,7 @@ transactions in JSON format.
 
 ## Command-line usage
 
-    usage: acc [-C <dir>] [--git | --no-git] <subcommand> [<arg>...]
+    usage: acc [-C <dir>] [--git | --no-git] [--] <subcommand> [<arg>...]
 
     Available subcommands:
         init <dir>

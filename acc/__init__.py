@@ -39,17 +39,17 @@ class UserDataError(Failure):
 
 ## Usage
 
-TOPLEVEL_USAGE = "[-C <dir>] [--git | --no-git] <subcommand> [<arg>...]"
+TOPLEVEL_USAGE = "[-C <dir>] [--git | --no-git] [--] <subcommand> [<arg>...]"
 
 SUBCOMMAND_USAGE = {
     "init": "<dir>",
-    "import": "import <importer> [<arg>...]",
+    "import": "<importer> [<arg>...]",
     "merge": "[--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>",
 }
 
-SUBCOMMANDS = ["init", "import", "merge"]
+SUBCOMMANDS = ("init", "import", "merge")
 
-SUBCOMMANDS_USING_GIT = ["import", "merge"]
+SUBCOMMANDS_USING_GIT = ("import", "merge")
 
 assert len(SUBCOMMANDS) == len(set(SUBCOMMANDS))
 assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE.keys())
@@ -63,7 +63,7 @@ def usage(subcommand=None, config=None, config_error=None):
             message += "\n    {} {}".format(
                 subcommand, SUBCOMMAND_USAGE[subcommand])
         message += "\n    help"
-        if config:
+        if config and config["aliases"]:
             message += "\n\nDefined aliases:"
             for alias in sorted(config["aliases"]):
                 message += "\n    " + alias
@@ -494,11 +494,22 @@ SUBCOMMANDS = {
     "merge": subcommand_merge,
 }
 
+HELP_COMMANDS = ("help", "-h", "-help", "--help", "-?")
+
 def command_line(exec_name, args, io):
     io = IOWrapper(io, exec_name)
     try:
         using_git = True
         while args:
+            if args[0] in HELP_COMMANDS:
+                # Try to read the config file, then print a usage
+                # message further down.
+                break
+            if args[0] == "--":
+                args = args[1:]
+                break
+            if not args[0].startswith("-"):
+                break
             if args[0] == "-C":
                 if len(args) == 1:
                     raise usage_error()
@@ -529,7 +540,7 @@ def command_line(exec_name, args, io):
             raise usage_error(config=config_or_none, config_error=config_error)
         commands = [args]
         subcommand, *args = args
-        if subcommand in ("help", "-h", "-help", "--help", "-?"):
+        if subcommand in HELP_COMMANDS:
             message = usage(config=config, config_error=config_error)
             io.print("usage: " + io.exec_name + " " + message)
         elif config_error:
