@@ -95,9 +95,7 @@ specified on the command line) by the key in the `references` map.
 
 ## TODO
 
-* Implement ledger merging
 * Implement ledger reconciliation
-* Show defined aliases as part of top-level usage message
 
 [shlex]: https://docs.python.org/3/library/shlex.html#shlex.split
 [strftime]: http://strftime.org/
