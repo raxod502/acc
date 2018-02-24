@@ -8,10 +8,10 @@ transactions in JSON format.
 
 ## Command-line usage
 
-    usage: acc [-C <dir>] <subcommand> [<arg>...]
+    usage: acc [-C <dir>] [--git | --no-git] <subcommand> [<arg>...]
 
     Available subcommands:
-        init [--git | --no-git] [--] <dir>
+        init <dir>
         import <importer> [<arg>...]
         merge [--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>
         help
@@ -33,6 +33,11 @@ Running `acc merge` allows you to integrate newly imported data into
 an existing ledger without overwriting it. By default, there must be
 some overlap between the ledgers (all fields except the IDs must
 match), or the target ledger must be empty.
+
+By default, if your `acc` library is version-controlled with Git,
+`acc` will ensure that there are no uncommitted changes before an
+action, and commit changes after the action is complete (if it
+succeeded).
 
 ## Configuration
 

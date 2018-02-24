@@ -39,18 +39,21 @@ class UserDataError(Failure):
 
 ## Usage
 
-TOPLEVEL_USAGE = """[-C <dir>] <subcommand> [<arg>...]"""
+TOPLEVEL_USAGE = "[-C <dir>] [--git | --no-git] <subcommand> [<arg>...]"
 
 SUBCOMMAND_USAGE = {
-    "init": "[--git | --no-git] [--] <dir>",
-    "import": "<importer> [<arg>...]",
+    "init": "<dir>",
+    "import": "import <importer> [<arg>...]",
     "merge": "[--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>",
 }
 
 SUBCOMMANDS = ["init", "import", "merge"]
 
+SUBCOMMANDS_USING_GIT = ["import", "merge"]
+
 assert len(SUBCOMMANDS) == len(set(SUBCOMMANDS))
 assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE.keys())
+assert set(SUBCOMMANDS_USING_GIT) <= set(SUBCOMMANDS)
 
 def usage(subcommand=None, config=None, config_error=None):
     if subcommand is None:
@@ -96,7 +99,8 @@ class IOWrapper:
     def __getattr__(self, name):
         return getattr(self.io, name)
 
-## Miscellaneous
+## Utilities
+### Strings
 
 class Placeholder:
 
@@ -109,6 +113,8 @@ class Placeholder:
 def quote_command(args):
     return " ".join(shlex.quote(arg) for arg in args)
 
+### Miscellaneous
+
 def random_transaction_id():
     return str(uuid.uuid4())
 
@@ -117,6 +123,50 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 
 def is_datetime(date):
     return ":" in date
+
+## Git integration
+
+def is_working_tree_clean(io):
+    try:
+        return (io.run(["git", "diff-files", "--quiet"],
+                       stdout=io.DEVNULL, stderr=io.DEVNULL)
+                .returncode == 0 and
+                io.run(["git", "diff-index", "--cached", "--quiet", "HEAD"],
+                       stdout=io.DEVNULL, stderr=io.DEVNULL)
+                .returncode == 0)
+    except OSError as e:
+        raise ExternalCommandError(
+            "unexpected failure while running 'git': {}"
+            .format(str(e)))
+
+def ensure_working_tree_clean(io):
+    if not io.which("git"):
+        return
+    if not is_working_tree_clean(io):
+        try:
+            io.run(["git", "status"])
+        except OSError as e:
+            raise ExternalCommandError(
+                "unexpected failure while running 'git': {}"
+                .format(str(e)))
+        raise FilesystemError("working directory is not clean")
+
+def commit_working_tree(io, message):
+    if not io.which("git"):
+        return
+    try:
+        if io.run(["git", "add", "-A"]).returncode != 0:
+            raise OSError("command failed: git add -A")
+        if not is_working_tree_clean(io):
+            if io.run(["git", "commit", "-m", message]).returncode != 0:
+                raise OSError("command failed: git commit -m {}"
+                              .format(shlex.quote(message)))
+    except OSError as e:
+        raise ExternalCommandError(
+            "unexpected failure while running 'git': {}"
+            .format(str(e)))
+
+## Serialization
 
 def serialize_ledger(ledger):
     transactions = []
@@ -161,29 +211,10 @@ def deserialize_ledger(ledger_json):
 ## Subcommands
 ### init
 
-def subcommand_init(args, io):
-    args_done = False
-    using_git = True
-    path = None
-    for arg in args:
-        if not args_done:
-            if arg == "--git":
-                using_git = True
-                continue
-            if arg == "--no-git":
-                using_git = False
-                continue
-            if arg == "--":
-                args_done = True
-                continue
-        if path is None:
-            path = arg
-            continue
+def subcommand_init(args, io, using_git, **kwargs):
+    if len(args) != 1:
         raise usage_error("init")
-    if path is None:
-        raise usage_error("init")
-    if using_git and not io.which("git"):
-        raise ExternalCommandError("command not found: git")
+    path = args[0]
     parent = io.dirname(io.abspath(path))
     if not io.isdir(parent):
         raise FilesystemError("no such directory: {}".format(parent))
@@ -194,9 +225,10 @@ def subcommand_init(args, io):
     except Exception as e:
         raise FilesystemError(
             "could not create directory {}: {}".format(repr(path), str(e)))
-    result = io.run(["git", "init"], cwd=path)
-    if result.returncode != 0:
-        raise ExternalCommandError("command failed: git init")
+    if using_git:
+        result = io.run(["git", "init"], cwd=path)
+        if result.returncode != 0:
+            raise ExternalCommandError("command failed: git init")
     config_file = io.join(path, "config.json")
     config = load_config_file(None, io)
     try:
@@ -217,7 +249,7 @@ def format_importer_list():
     return ("\n\nAvailable importers (modules in 'acc.importers' namespace):\n" +
             "\n".join("  - " + importer for importer in importers))
 
-def subcommand_import(args, io):
+def subcommand_import(args, io, **kwargs):
     if not args:
         message = SUBCOMMAND_USAGE["import"] + format_importer_list()
         raise StandardUsageError(message)
@@ -341,7 +373,7 @@ def merge_ledgers(source_ledger, target_ledger, require_overlap):
     merged_ledger["transactions"].extend(source_ledger["transactions"][source_idx:])
     return merged_ledger
 
-def subcommand_merge(args, io):
+def subcommand_merge(args, io, **kwargs):
     source_file = None
     target_file = None
     require_overlap = True
@@ -465,14 +497,26 @@ SUBCOMMANDS = {
 def command_line(exec_name, args, io):
     io = IOWrapper(io, exec_name)
     try:
-        while args and args[0] == "-C":
-            if len(args) == 1:
-                raise usage_error()
-            path = args[1]
-            if not io.isdir(path):
-                raise FilesystemError("no such directory: {}".format(path))
-            io.chdir(path)
-            args = args[2:]
+        using_git = True
+        while args:
+            if args[0] == "-C":
+                if len(args) == 1:
+                    raise usage_error()
+                path = args[1]
+                if not io.isdir(path):
+                    raise FilesystemError("no such directory: {}".format(path))
+                io.chdir(path)
+                args = args[2:]
+                continue
+            if args[0] == "--git":
+                using_git = True
+                args = args[1:]
+                continue
+            if args[0] == "--no-git":
+                using_git = False
+                args = args[1:]
+                continue
+            raise usage_error()
         try:
             config_file = locate_dominating_file("config.json", io)
             config = load_config_file(config_file, io)
@@ -510,8 +554,16 @@ def command_line(exec_name, args, io):
                     commands.append(args)
                     subcommand, *args = args
                 if subcommand in SUBCOMMANDS:
+                    if using_git and not io.which("git"):
+                        io.print("hint: use --no-git to disable Git integration")
+                        raise ExternalCommandError("command not found: git")
                     try:
-                        SUBCOMMANDS[subcommand](args, io)
+                        if subcommand in SUBCOMMANDS_USING_GIT:
+                            ensure_working_tree_clean(io)
+                        SUBCOMMANDS[subcommand](args, io, using_git=using_git)
+                        if subcommand in SUBCOMMANDS_USING_GIT:
+                            commit_working_tree(
+                                io, quote_command([subcommand] + args))
                     except StandardUsageError as e:
                         raise StandardUsageError(subcommand + " " + str(e))
                 else:

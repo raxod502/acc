@@ -25,6 +25,7 @@ class IO:
         self.open = open
         self.getcwd = os.getcwd
         self.isfile = os.path.isfile
+        self.DEVNULL = subprocess.DEVNULL
 
 if __name__ == "__main__":
     exec_name = "acc"
