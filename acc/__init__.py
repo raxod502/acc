@@ -528,6 +528,7 @@ def command_line(exec_name, args, io):
                 args = args[1:]
                 continue
             raise usage_error()
+        original_args = args
         try:
             config_file = locate_dominating_file("config.json", io)
             config = load_config_file(config_file, io)
@@ -574,7 +575,7 @@ def command_line(exec_name, args, io):
                         SUBCOMMANDS[subcommand](args, io, using_git=using_git)
                         if subcommand in SUBCOMMANDS_USING_GIT:
                             commit_working_tree(
-                                io, quote_command([subcommand] + args))
+                                io, quote_command(["acc"] + original_args))
                     except StandardUsageError as e:
                         raise StandardUsageError(subcommand + " " + str(e))
                 else:
