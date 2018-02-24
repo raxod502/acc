@@ -1,5 +1,6 @@
 import acc.importers
 
+import copy
 import datetime
 import importlib
 import json
@@ -43,7 +44,7 @@ TOPLEVEL_USAGE = """[-C <dir>] <subcommand> [<arg>...]"""
 SUBCOMMAND_USAGE = {
     "init": "[--git | --no-git] [--] <dir>",
     "import": "<importer> [<arg>...]",
-    "merge": "[--append-only | --no-append-only] [--] <source-ledger> <target-ledger>",
+    "merge": "[--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>",
 }
 
 SUBCOMMANDS = ["init", "import", "merge"]
@@ -96,6 +97,14 @@ class IOWrapper:
         return getattr(self.io, name)
 
 ## Miscellaneous
+
+class Placeholder:
+
+    def __init__(self, contents):
+        self.contents = contents
+
+    def __repr__(self):
+        return self.contents
 
 def quote_command(args):
     return " ".join(shlex.quote(arg) for arg in args)
@@ -238,14 +247,115 @@ def most_similar_transaction(transaction, transactions):
     return max(filter(lambda t: t is not transactions, transactions),
                key=lambda t: transaction_similarity(t, transaction))
 
+def transactions_equivalent(t1, t2):
+    t1_norm, t2_norm = dict(t1), dict(t2)
+    del t1_norm["id"]
+    del t2_norm["id"]
+    return t1_norm == t2_norm
+
+UNSET = Placeholder("(unset)")
+
+def diff_maps(m1, m2, exclude_keys=[]):
+    for key in set(m1) | set(m2):
+        if key in exclude_keys:
+            continue
+        v1, v2 = m1.get(key, UNSET), m2.get(key, UNSET)
+        if v1 != v2:
+            return ("have differing values for key {}: respectively {} and {}"
+                    .format(repr(key), repr(v1), repr(v2)))
+    return None
+
+def merge_ledgers(source_ledger, target_ledger, require_overlap):
+
+    # If target ledger does not exist, just copy the source ledger.
+    if target_ledger is None:
+        return source_ledger
+
+    # Extract substructures.
+    source_metadata = source_ledger["metadata"]
+    target_metadata = target_ledger["metadata"]
+    source_transactions = source_ledger["transactions"]
+    target_transactions = target_ledger["transactions"]
+
+    # Ensure that metadata matches.
+    metadata_diff = diff_maps(source_metadata, target_metadata)
+    if metadata_diff:
+        raise UserDataError("source and target ledger metadata {}"
+                            .format(metadata_diff))
+
+    # If no transactions in target ledger, just copy the source ledger.
+    if not target_transactions:
+        return source_ledger
+
+    # If no transactions in source ledger, don't modify the target ledger.
+    if not source_transactions:
+        return target_ledger
+
+    # Get the location of the first transaction from the source ledger
+    # within the target ledger.
+    base_transaction = source_transactions[0]
+    found_alignment = False
+    for target_idx, target_transaction in enumerate(target_transactions):
+        if transactions_equivalent(base_transaction, target_transaction):
+            found_alignment = True
+            break
+
+    if require_overlap:
+        # If no alignment, report an error.
+        if not found_alignment:
+            most_similar = most_similar_transaction(
+                base_transaction, target_transactions)
+            most_similar_diff = diff_maps(base_transaction, most_similar)
+            assert most_similar_diff
+            raise UserDataError(
+                ("first transaction in source ({}) and most similar "
+                 "transaction in target ledger ({}) {}")
+                .format(repr(base_transaction["id"]),
+                        repr(most_similar["id"]),
+                        most_similar_diff))
+
+        # Ensure alignment continues.
+        for source_transaction, target_transaction in zip(
+                source_transactions, target_transactions[target_idx:]):
+            align_diff = diff_maps(
+                source_transaction, target_transaction, exclude_keys=["id"])
+            if align_diff:
+                raise UserDataError(
+                    ("ledgers do not align; transactions in source "
+                     "({}) and target ({}) {}")
+                    .format(repr(source_transaction["id"]),
+                            repr(target_transaction["id"]),
+                            align_diff))
+
+    # Create merged ledger.
+    #
+    # Example of source_idx calculation:
+    # [A, B, C, D, E] + [D, E, F]
+    # target_idx = 3
+    # source_idx = 2
+    merged_ledger = copy.deepcopy(target_ledger)
+    if found_alignment:
+        source_idx = len(source_transactions) - target_idx
+    else:
+        source_idx = 0
+    merged_ledger["transactions"].extend(source_ledger["transactions"][source_idx:])
+    return merged_ledger
+
 def subcommand_merge(args, io):
     source_file = None
     target_file = None
+    require_overlap = True
     args_done = False
     for arg in args:
         if not args_done:
             if arg == "--":
                 args_done = True
+                continue
+            if arg == "--require-overlap":
+                require_overlap = True
+                continue
+            if arg == "--no-require-overlap":
+                require_overlap = False
                 continue
         if source_file is None:
             source_file = arg
@@ -281,10 +391,8 @@ def subcommand_merge(args, io):
             raise type(e)("in file {}: {}".format(repr(target_file), str(e)))
     else:
         target_ledger = None
-    if target_ledger is None:
-        merged_ledger = source_ledger
-    else:
-        raise NotImplementedError # FIXME
+    merged_ledger = merge_ledgers(
+        source_ledger, target_ledger, require_overlap)
     ledger_str = serialize_ledger(merged_ledger)
     target_dir = io.dirname(io.abspath(target_file))
     try:

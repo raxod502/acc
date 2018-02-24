@@ -13,7 +13,7 @@ transactions in JSON format.
     Available subcommands:
         init [--git | --no-git] [--] <dir>
         import <importer> [<arg>...]
-        merge [--append-only | --no-append-only] [--] <source-ledger> <target-ledger>
+        merge [--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>
         help
 
 Running `acc init` creates the specified directory, by default
@@ -30,7 +30,9 @@ arguments. Generally they will be given some file as input and produce
 a ledger file containing the imported data.
 
 Running `acc merge` allows you to integrate newly imported data into
-an existing ledger without overwriting it.
+an existing ledger without overwriting it. By default, there must be
+some overlap between the ledgers (all fields except the IDs must
+match), or the target ledger must be empty.
 
 ## Configuration
 
