@@ -128,12 +128,23 @@ def is_datetime(date):
 
 def is_working_tree_clean(io):
     try:
-        return (io.run(["git", "diff-files", "--quiet"],
-                       stdout=io.DEVNULL, stderr=io.DEVNULL)
-                .returncode == 0 and
-                io.run(["git", "diff-index", "--cached", "--quiet", "HEAD"],
-                       stdout=io.DEVNULL, stderr=io.DEVNULL)
-                .returncode == 0)
+        # Make sure working tree matches HEAD.
+        result = io.run(["git", "diff-files", "--quiet"])
+        if result.returncode != 0:
+            return False
+        # Make sure index matches HEAD.
+        result = io.run(["git", "diff-index", "--cached", "--quiet", "HEAD"])
+        if result.returncode != 0:
+            return False
+        # Make sure there are no untracked files.
+        result = io.run(["git", "ls-files", "--others", "--exclude-standard"],
+                        stdout=io.PIPE)
+        if result.returncode != 0:
+            raise ExternalCommandError(
+                "command failed: {}".format(quote_command(result.args)))
+        if result.stdout:
+            return False
+        return True
     except OSError as e:
         raise ExternalCommandError(
             "unexpected failure while running 'git': {}"

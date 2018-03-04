@@ -22,3 +22,4 @@ class StandardIO:
         self.getcwd = os.getcwd
         self.isfile = os.path.isfile
         self.DEVNULL = subprocess.DEVNULL
+        self.PIPE = subprocess.PIPE
