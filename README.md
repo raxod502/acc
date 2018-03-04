@@ -100,6 +100,8 @@ specified on the command line) by the key in the `references` map.
 
 ## TODO
 
+* Account for untracked files in Git integration.
+* Don't attempt to use Git integration if not inside a Git repository.
 * Implement ledger reconciliation
 
 [shlex]: https://docs.python.org/3/library/shlex.html#shlex.split
