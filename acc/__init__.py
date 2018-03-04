@@ -510,7 +510,7 @@ HELP_COMMANDS = ("help", "-h", "-help", "--help", "-?")
 def command_line(exec_name, args, io):
     io = IOWrapper(io, exec_name)
     try:
-        using_git = True
+        using_git = None
         while args:
             if args[0] in HELP_COMMANDS:
                 # Try to read the config file, then print a usage
@@ -539,6 +539,21 @@ def command_line(exec_name, args, io):
                 args = args[1:]
                 continue
             raise usage_error()
+        if using_git is None:
+            if locate_dominating_file(".git", io):
+                result = io.run(["git", "rev-parse", "--is-inside-work-tree"],
+                                stdout=io.PIPE)
+                if result.returncode != 0:
+                    raise ExternalCommandError(
+                        "command failed: {}".format(quote_command(result.args)))
+                response = result.stdout.decode().strip()
+                if response != "true":
+                    raise ExternalCommandError(
+                        "unexpected response from command '{}': {}"
+                        .format(quote_command(result.args), response))
+                using_git = True
+            else:
+                using_git = False
         original_args = args
         try:
             config_file = locate_dominating_file("config.json", io)
@@ -581,10 +596,10 @@ def command_line(exec_name, args, io):
                         io.print("hint: use --no-git to disable Git integration")
                         raise ExternalCommandError("command not found: git")
                     try:
-                        if subcommand in SUBCOMMANDS_USING_GIT:
+                        if using_git and subcommand in SUBCOMMANDS_USING_GIT:
                             ensure_working_tree_clean(io)
                         SUBCOMMANDS[subcommand](args, io, using_git=using_git)
-                        if subcommand in SUBCOMMANDS_USING_GIT:
+                        if using_git and subcommand in SUBCOMMANDS_USING_GIT:
                             commit_working_tree(
                                 io, quote_command(["acc"] + original_args))
                     except StandardUsageError as e:
