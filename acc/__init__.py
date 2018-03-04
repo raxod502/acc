@@ -5,6 +5,7 @@ import datetime
 import importlib
 import json
 import pkgutil
+import random
 import shlex
 import uuid
 
@@ -45,16 +46,26 @@ SUBCOMMAND_USAGE = {
     "init": "<dir>",
     "import": "<importer> [<arg>...]",
     "merge": "[--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>",
+    "balance": "[<primary-name>=]<primary-ledger> [<secondary-name>=]<secondary-ledger>",
 }
 
-SUBCOMMANDS = ("init", "import", "merge")
+SUBCOMMANDS = ("init", "import", "merge", "balance")
 
-SUBCOMMANDS_USING_GIT = ("import", "merge")
-SUBCOMMANDS_REQUESTING_GIT = ("init")
+SUBCOMMANDS_USING_GIT = {"import", "merge", "balance"}
+SUBCOMMANDS_REQUESTING_GIT = {"init"}
 
+# No duplicates in subcommand list.
 assert len(SUBCOMMANDS) == len(set(SUBCOMMANDS))
-assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE.keys())
-assert set(SUBCOMMANDS_USING_GIT) <= set(SUBCOMMANDS)
+
+# Usage given for each subcommand.
+assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE)
+
+# Special subcommands are limited to existing ones.
+assert SUBCOMMANDS_USING_GIT <= set(SUBCOMMANDS)
+assert SUBCOMMANDS_REQUESTING_GIT <= set(SUBCOMMANDS)
+
+# No overlap between categories of special subcommands.
+assert not (SUBCOMMANDS_USING_GIT & SUBCOMMANDS_REQUESTING_GIT)
 
 def usage(subcommand=None, config=None, config_error=None):
     if subcommand is None:
@@ -119,12 +130,6 @@ def quote_command(args):
 def random_transaction_id():
     return str(uuid.uuid4())
 
-DATE_FORMAT = "%Y-%m-%d"
-DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
-
-def is_datetime(date):
-    return ":" in date
-
 ## Git integration
 
 def is_working_tree_clean(io):
@@ -178,25 +183,57 @@ def commit_working_tree(io, message):
             "unexpected failure while running 'git': {}"
             .format(str(e)))
 
-## Serialization
+## Transactions and ledgers
+
+DATE_FORMAT = "%Y-%m-%d"
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
+
+def is_datetime(date):
+    return ":" in date
+
+def format_date(date):
+    if isinstance(date, datetime.date):
+        return date.strftime(DATE_FORMAT)
+    elif isinstance(date, datetime.datetime):
+        return date.strftime(DATETIME_FORMAT)
+    else:
+        raise InternalError(
+            "cannot serialize date of type {}: {}"
+            .format(repr(type(date)), repr(date)))
+
+def parse_date(date):
+    try:
+        if is_datetime(date):
+            return datetime.datetime.strptime(date, DATETIME_FORMAT)
+        else:
+            return datetime.datetime.strptime(date, DATE_FORMAT).date()
+    except ValueError:
+        raise UserDataError("malformed date: {}".format(date))
+
+def transaction_delta(transaction, account):
+    value = transaction["value"]
+    if transaction["type"] == "credit":
+        return value
+    elif transaction["type"] == "debit":
+        return -value
+    elif transaction["type"] == "transfer":
+        if transaction["source-account"] == account:
+            return -value
+        elif transaction["target-account"] == account:
+            return value
+        else:
+            return 0
+    else:
+        raise InternalError(
+            "unexpected transaction type: {}"
+            .format(repr(transaction["type"])))
 
 def serialize_ledger(ledger):
     transactions = []
     for transaction in ledger["transactions"]:
         transaction = dict(transaction)
         if "date" in transaction:
-            date = transaction["date"]
-            if date is None:
-                date_str = None
-            elif isinstance(date, datetime.date):
-                date_str = date.strftime(DATE_FORMAT)
-            elif isinstance(date, datetime.datetime):
-                date_str = date.strftime(DATETIME_FORMAT)
-            else:
-                raise InternalError(
-                    "cannot serialize date of type {}: {}"
-                    .format(repr(type(date)), repr(date)))
-            transaction["date"] = date_str
+            transaction["date"] = format_date(transaction["date"])
         transactions.append(transaction)
     ledger = dict(ledger)
     ledger["transactions"] = transactions
@@ -209,16 +246,20 @@ def deserialize_ledger(ledger_json):
         raise UserDataError("malformed JSON: {}".format(str(e)))
     for transaction in ledger["transactions"]:
         if "date" in transaction:
-            date = transaction["date"]
-            try:
-                if is_datetime(date):
-                    date = datetime.datetime.strptime(date, DATETIME_FORMAT)
-                else:
-                    date = datetime.datetime.strptime(date, DATE_FORMAT).date()
-            except ValueError:
-                raise UserDataError("malformed date: {}".format(date))
-            transaction["date"] = date
+            transaction["date"] = parse_date(transaction["date"])
     return ledger
+
+def read_ledger_file(filename):
+    try:
+        with open(filename) as f:
+            ledger = f.read()
+    except OSError as e:
+        raise FilesystemError("could not read file {}: {}"
+                              .format(repr(filename), str(e)))
+    try:
+        ledger = deserialize_ledger(ledger)
+    except Failure as e:
+        raise type(e)("in file {}: {}".format(repr(filename), str(e)))
 
 ## Subcommands
 ### init
@@ -412,27 +453,9 @@ def subcommand_merge(args, io, **kwargs):
         raise usage_error("merge")
     if not io.isfile(source_file):
         raise FilesystemError("no such file: {}".format(source_file))
-    try:
-        with open(source_file) as f:
-            source_ledger = f.read()
-    except OSError as e:
-        raise FilesystemError("could not read file {}: {}"
-                              .format(repr(source_file, str(e))))
-    try:
-        source_ledger = deserialize_ledger(source_ledger)
-    except Failure as e:
-        raise type(e)("in file {}: {}".format(repr(source_file), str(e)))
+    source_ledger = read_ledger_file(source_file)
     if io.isfile(target_file):
-        try:
-            with open(target_file) as f:
-                target_ledger = f.read()
-        except OSError as e:
-            raise FilesystemError("could not read file {}: {}"
-                                  .format(repr(target_file, str(e))))
-        try:
-            target_ledger = deserialize_ledger(target_ledger)
-        except Failure as e:
-            raise type(e)("in file {}: {}".format(repr(target_file), str(e)))
+        target_ledger = read_ledger_file(target_file)
     else:
         target_ledger = None
     merged_ledger = merge_ledgers(
@@ -453,6 +476,100 @@ def subcommand_merge(args, io, **kwargs):
         raise FilesystemError(
             "could not write file {}: {}"
             .format(repr(target_file), str(e)))
+
+### balance
+
+def parse_ledger_name_and_file(arg, io):
+    if "=" in arg:
+        idx = arg.index("=")
+        return arg[:idx], arg[idx+1:]
+    else:
+        return io.splitext(arg)[0], arg
+
+def pad_strings(strings):
+    length = max(len, strings)
+    return ["{s: <{fill}}".format(s=s, fill=length) for s in strings]
+
+def format_transactions(tids, max_length):
+    transactions, ids = zip(*tids)
+    deltas = ["${.2f}".format(transaction_delta(t)) for t in transactions]
+    deltas = list(map(transaction_delta, transactions))
+    dates = [format_date(t["date"]) for t in transactions]
+    descriptions = [t.get("description", "(unknown)") for t in transactions]
+
+    ids = pad_strings(ids)
+    deltas = pad_strings(deltas)
+    dates = pad_strings(dates)
+    descriptions = pad_strings(descriptions)
+
+    return ["{} ({}) {} - {}".format(delta, date, desc)[:max_length]
+            for delta, date, desc in zip(deltas, dates, descriptions)]
+
+def substitution_distance(s1, s2):
+    d = 0
+    for c1, c2 in zip(s1, s2):
+        if c1 != c2:
+            d += 1
+    d += abs(len(s1) - len(s2))
+    return d
+
+def make_id(alphabet, length):
+    new_id = ""
+    for i in range(length):
+        new_id += random.choice(alphabet)
+    return new_id
+
+def make_ids(alphabet, num):
+    syms = len(alphabet)
+    length = 1
+    while True:
+        max_num = (syms ** length) / (2 * (1 + length * (syms - 1)))
+        if num < max_num:
+            break
+        length += 1
+    ids = []
+    while len(ids) < num:
+        new_id = make_id(alphabet, length)
+        ok = True
+        for old_id in ids:
+            if substitution_distance(old_id, new_id) < 2:
+                ok = False
+                break
+        if ok:
+            ids.append(new_id)
+    return ids
+
+def map_sectioned(groups, mapper):
+    groups = list(groups)
+    all_items = []
+    for section, items in groups:
+        all_items.extend(items)
+    mapped_items = mapper(all_items)
+    assert len(mapped_items) == len(all_items)
+    count = 0
+    for tup in groups:
+        section, items = tup
+        tup[1] = mapped_items[count:count+len(items)]
+        count += len(items)
+    return groups
+
+def format_transaction_groups(left_groups, right_groups, width, height):
+    def map_format(tids):
+        return format_transactions(tids, width)
+    left_groups = map_sectioned(left_groups, map_format)
+    right_groups = map_sectioned(right_groups, map_format)
+
+def subcommand_balance(args, io, **kwargs):
+    if len(args) != 2:
+        raise usage_error("balance")
+
+    primary, secondary = args
+
+    primary_name, primary_file = parse_ledger_name_and_file(primary, io)
+    secondary_name, secondary_file = parse_ledger_name_and_file(secondary, io)
+
+    primary_ledger = read_ledger_file(primary_file)
+    secondary_ledger = read_ledger_file(secondary_file)
 
 ## Configuration
 
@@ -504,6 +621,7 @@ SUBCOMMANDS = {
     "init": subcommand_init,
     "import": subcommand_import,
     "merge": subcommand_merge,
+    "balance": subcommand_balance,
 }
 
 HELP_COMMANDS = ("help", "-h", "-help", "--help", "-?")

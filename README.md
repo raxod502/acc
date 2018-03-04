@@ -14,6 +14,7 @@ transactions in JSON format.
         init <dir>
         import <importer> [<arg>...]
         merge [--require-overlap | --no-require-overlap] [--] <source-ledger> <target-ledger>
+        balance [<primary-name>=]<primary-ledger> [<secondary-name>=]<secondary-ledger>
         help
 
 Running `acc init` creates the specified directory, by default
@@ -91,12 +92,12 @@ that were listed under `accounts` in `metadata`. `date` is a string
 identifying the date and/or time of the transaction, in format either
 `%Y-%m-%d` or `%Y-%m-%d %H:%M:%S%z` (see [strftime format][strftime]).
 `tags` is a list of strings identifying categories for filtering and
-aggregation. `references` is a map with string keys; each value is a
-map with keys `primary` and `foreign` (both optional). The values for
-each of those keys are lists of transaction IDs, with `primary` IDs
-referencing other transactions in the same ledger and `foreign` IDs
-referencing other transactions in the ledger identified (in a manner
-specified on the command line) by the key in the `references` map.
+aggregation. `references` is a map with keys `primary` and `foreign`
+(both optional). The value for `primary` is a list of transaction IDs
+referencing other transactions in the same ledger. The value for
+`foreign` is a map from ledger ID strings (which will be given on the
+command line) to lists of transaction IDs referencing transactions in
+those ledgers.
 
 ## TODO
 
