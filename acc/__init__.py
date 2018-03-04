@@ -50,6 +50,7 @@ SUBCOMMAND_USAGE = {
 SUBCOMMANDS = ("init", "import", "merge")
 
 SUBCOMMANDS_USING_GIT = ("import", "merge")
+SUBCOMMANDS_REQUESTING_GIT = ("init")
 
 assert len(SUBCOMMANDS) == len(set(SUBCOMMANDS))
 assert set(SUBCOMMANDS) == set(SUBCOMMAND_USAGE.keys())
@@ -539,21 +540,6 @@ def command_line(exec_name, args, io):
                 args = args[1:]
                 continue
             raise usage_error()
-        if using_git is None:
-            if locate_dominating_file(".git", io):
-                result = io.run(["git", "rev-parse", "--is-inside-work-tree"],
-                                stdout=io.PIPE)
-                if result.returncode != 0:
-                    raise ExternalCommandError(
-                        "command failed: {}".format(quote_command(result.args)))
-                response = result.stdout.decode().strip()
-                if response != "true":
-                    raise ExternalCommandError(
-                        "unexpected response from command '{}': {}"
-                        .format(quote_command(result.args), response))
-                using_git = True
-            else:
-                using_git = False
         original_args = args
         try:
             config_file = locate_dominating_file("config.json", io)
@@ -581,7 +567,8 @@ def command_line(exec_name, args, io):
                             break
                         else:
                             raise UsageError(
-                                "alias {} expands to itself".format(repr(subcommand)))
+                                "alias {} expands to itself"
+                                .format(repr(subcommand)))
                     alias_args = shlex.split(config["aliases"][subcommand])
                     args = alias_args + args
                     if not args:
@@ -592,13 +579,41 @@ def command_line(exec_name, args, io):
                     commands.append(args)
                     subcommand, *args = args
                 if subcommand in SUBCOMMANDS:
+                    if using_git is None:
+                        if subcommand in SUBCOMMANDS_REQUESTING_GIT:
+                            if not io.which("git"):
+                                io.print_stderr(
+                                    "hint: use --no-git to disable Git integration")
+                                raise ExternalCommandError(
+                                    "command not found: git")
+                            using_git = True
+                        elif subcommand in SUBCOMMANDS_USING_GIT:
+                            if locate_dominating_file(".git", io):
+                                result = io.run(
+                                    ["git", "rev-parse", "--is-inside-work-tree"],
+                                    stdout=io.PIPE)
+                                if result.returncode != 0:
+                                    raise ExternalCommandError(
+                                        "command failed: {}"
+                                        .format(quote_command(result.args)))
+                                response = result.stdout.decode().strip()
+                                if response != "true":
+                                    raise ExternalCommandError(
+                                        "unexpected response from command '{}': {}"
+                                        .format(quote_command(result.args), response))
+                                using_git = True
+                            else:
+                                using_git = False
                     if using_git and not io.which("git"):
-                        io.print("hint: use --no-git to disable Git integration")
                         raise ExternalCommandError("command not found: git")
                     try:
                         if using_git and subcommand in SUBCOMMANDS_USING_GIT:
                             ensure_working_tree_clean(io)
-                        SUBCOMMANDS[subcommand](args, io, using_git=using_git)
+                        if (subcommand in SUBCOMMANDS_USING_GIT or
+                            subcommand in SUBCOMMANDS_REQUESTING_GIT):
+                            SUBCOMMANDS[subcommand](args, io, using_git=using_git)
+                        else:
+                            SUBCOMMANDS[subcommand](args, io)
                         if using_git and subcommand in SUBCOMMANDS_USING_GIT:
                             commit_working_tree(
                                 io, quote_command(["acc"] + original_args))
