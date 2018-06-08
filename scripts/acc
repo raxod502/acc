@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+
+def get_cmds():
+    cmds = set()
+    path = os.environ.get("PATH")
+    if not path:
+        return []
+    path = path.split(os.pathsep)
+    for entry in path:
+        try:
+            for filename in os.listdir(entry):
+                if filename.startswith("acc-"):
+                    full_path = os.path.join(entry, filename)
+                    if (os.path.isfile(full_path) and
+                        os.access(full_path, os.X_OK)):
+                        #
+                        cmds.add(filename[len("acc-"):])
+        except OSError as e:
+            pass
+    return cmds
+
+def usage():
+    cmds = get_cmds()
+    if cmds:
+        hint = "Available subcommands:\n{}".format(
+            "\n".join("    {}".format(cmd) for cmd in cmds))
+    else:
+        hint = ("Somehow, there are no subcommands available.\n" +
+                "Is there something wrong with $PATH?")
+    return "usage: acc <subcommand> <arg>...\n\n{}".format(hint)
+
+def main(args):
+    if not args:
+        print(usage(), file=sys.stderr)
+        sys.exit(1)
+    cmd = args[0]
+    if cmd in ["help", "-help", "--help", "-h", "-H", "-?"]:
+        print("acc is a bare-bones command-line accounting tool.")
+        print("For more information, see https://github.com/raxod502/acc.")
+        print()
+        print(usage())
+        sys.exit(0)
+    executable = "acc-" + cmd
+    try:
+        result = subprocess.run(executable, args[1:])
+        sys.exit(result.returncode)
+    except FileNotFoundError as e:
+        print("acc: command not found: {}".format(executable),
+              file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
