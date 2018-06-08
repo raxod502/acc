@@ -46,7 +46,7 @@ def main(args):
         sys.exit(0)
     executable = "acc-" + cmd
     try:
-        result = subprocess.run(executable, args[1:])
+        result = subprocess.run([executable] + args[1:])
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         print("acc: command not found: {}".format(executable),
