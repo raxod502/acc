@@ -21,7 +21,7 @@ def get_cmds():
                         cmds.add(filename[len("acc-"):])
         except OSError as e:
             pass
-    return cmds
+    return sorted(list(cmds))
 
 def usage():
     cmds = get_cmds()
