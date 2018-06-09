@@ -8,7 +8,7 @@ setup(
     license="MIT",
     install_requires=[],
     name="acc",
-    scripts=["scripts/acc"],
+    scripts=["scripts/acc", "scripts/acc-import-elevations-csv"],
     url="https://github.com/raxod502/acc",
     version="1.0",
     zip_safe=True,
