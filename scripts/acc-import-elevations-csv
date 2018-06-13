@@ -40,11 +40,11 @@ def row_to_transaction(row, account):
         "fees": fees,
     }
     if delta > 0:
-        trans["to"] = account
-        trans["from"] = None
+        trans["to"] = [account]
+        trans["from"] = []
     else:
-        trans["to"] = None
-        trans["from"] = account
+        trans["to"] = []
+        trans["from"] = [account]
     return trans
 
 def usage():
