@@ -1,4 +1,7 @@
-**acc**: command-line accounting tool.
+## Deprecated
+
+`acc` has been deprecated, since I no longer track my finances
+manually.
 
 ## Summary
 
