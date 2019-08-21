@@ -1,7 +1,8 @@
 ## Deprecated
 
 `acc` has been deprecated, since I no longer track my finances
-manually.
+manually. The remainder of the README is retained primarily for
+historical value.
 
 ## Summary
 
